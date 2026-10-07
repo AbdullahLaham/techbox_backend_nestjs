@@ -1,0 +1,29 @@
+@baseUrl = http://localhost:3000
+
+### 1. Register a new user
+# @name register
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "dev.test@example.com",
+  "password": "Password123!",
+  "fullName": "Kamel Al-Lahham"
+}
+
+### 2. Login to get Access Token
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "dev.test@example.com",
+  "password": "Password123!"
+}
+
+### Save Token Variable
+@authToken = {{login.response.body.accessToken}}
+
+### 3. Get User Profile (Protected Route)
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{authToken}}
