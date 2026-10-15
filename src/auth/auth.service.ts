@@ -27,6 +27,7 @@ export class AuthService {
       data: {
         email: dto.email.toLowerCase(),
         passwordHash,
+        status: 'ACTIVE', // <--- أضف هذا السطر لضمان تفعيل الحساب فور التسجيل
         profile: {
           create: {
             firstName: dto.firstName,
@@ -75,6 +76,7 @@ export class AuthService {
         globalRole: user.globalRole,
         firstName: user.profile?.firstName,
         lastName: user.profile?.lastName,
+        role: user.globalRole,
       },
     };
   }
