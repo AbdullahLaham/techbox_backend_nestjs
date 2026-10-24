@@ -161,10 +161,14 @@ export class ProgramsService {
     });
   }
 
-  async findOneWithStructure(slug: string) {
+  async findOneWithStructure(slug: string, userId?: string) {
     const program = await this.prisma.program.findUnique({
       where: { slug },
       include: {
+        // جلب تسجيلات البرنامج (يمكن فلترتها بناءً على المستخدم إن وُجد)
+        enrollments: userId ? {
+          where: { userId },
+        } : true,
         tracks: {
           orderBy: { orderIndex: 'asc' },
           include: {

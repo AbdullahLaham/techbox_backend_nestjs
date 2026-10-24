@@ -106,6 +106,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 
 export interface JwtPayload {
@@ -157,6 +158,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     if (!user) {
       throw new UnauthorizedException('المستخدم غير موجود');
+    }
+
+    // الحسابات الموقوفة أو المؤرشفة ترفض في كل المسارات (ASSIGNMENTS_SPEC.md 4.5)
+    if (user.status === UserStatus.SUSPENDED || user.status === UserStatus.ARCHIVED) {
+      throw new UnauthorizedException('الحساب غير نشط');
     }
 
     return {

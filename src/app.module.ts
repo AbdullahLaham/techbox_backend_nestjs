@@ -6,26 +6,24 @@ import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ConfigModule } from '@nestjs/config';
 import { ProgramsModule } from './programs/programs.module.js';
+import { EnrollmentsModule } from './enrollments/enrollments.module.js';
+// تم حذف استيراد الـ AssignmentsController المباشر من هنا
+import { AssignmentsModule } from './assignments/assignments.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
 @Module({
   imports: [
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    // ObserveModule.forRoot({
-    //   appKey: 'YOUR_APP_KEY',
-    //   appSecret: 'YOUR_APP_SECRET',
-    //   serviceId: 'techbox-incubator-backend',
-    // }),
     ConfigModule.forRoot({
-      isGlobal: true, // <--- تأكد من وجود isGlobal: true
+      isGlobal: true,
     }),
     AuthModule,
     PrismaModule,
     ProgramsModule,
+    EnrollmentsModule,
+    AssignmentsModule, // <--- الموديول كفيل بتسجيل الكنترولر والخدمة الخاصة به
   ],
-  controllers: [AppController],
+  controllers: [AppController], // <--- اترك فقط الـ AppController هنا
   providers: [AppService],
 })
 export class AppModule {}

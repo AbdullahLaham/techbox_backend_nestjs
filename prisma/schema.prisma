@@ -26,19 +26,30 @@ model User {
   @@index([globalRole, status])
 }
 
+
 model UserProfile {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  firstName   String
-  lastName    String
-  phoneNumber String?  @unique
-  avatarUrl   String?
-  bio         String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  firstName     String
+  lastName      String
+  phoneNumber   String?  @unique
+  avatarUrl     String?
+  bio           String?
+  
+  // === البيانات الإضافية للتسجيل ===
+  fullNameAr    String?  // الاسم ثلاثي بالعربي
+  fullNameEn    String?  // الاسم الكامل بالإنجليزية
+  age           Int?     // العمر
+  phoneWhatsApp String?  // رقم الجوال مع مقدمة الواتساب
+  nationalId    String?  // رقم الهوية
+  governorate   String?  // المحافظة التي يسكن بها
+
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
 
 model UserSession {
   id           String   @id @default(uuid())
@@ -53,18 +64,42 @@ model UserSession {
   @@index([userId, expiresAt])
 }
 
+// model Program {
+//   id          String        @id @default(uuid())
+//   title       String
+//   slug        String        @unique
+//   description String?
+//   type        ProgramType   @default(ACADEMIC_COURSE)
+//   status      ProgramStatus @default(DRAFT)
+//   coverImage  String?
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+//   enrollments Enrollment[]
+//   tracks      Track[]
+
+//   @@index([status, type])
+// }
+
+
 model Program {
-  id          String        @id @default(uuid())
-  title       String
-  slug        String        @unique
-  description String?
-  type        ProgramType   @default(ACADEMIC_COURSE)
-  status      ProgramStatus @default(DRAFT)
-  coverImage  String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  enrollments Enrollment[]
-  tracks      Track[]
+  id               String          @id @default(uuid())
+  title            String
+  slug             String          @unique
+  description      String?
+  type             ProgramType     @default(ACADEMIC_COURSE)
+  status           ProgramStatus   @default(DRAFT)
+  coverImage       String?
+  
+  // === خصائص الدفعة والمقاعد (Cohort-Based Scarcity) ===
+  maxSeats         Int?            @default(30)      // الحد الأقصى للمقاعد
+  startDate        DateTime?                         // تاريخ بدء الدفعة
+  endDate          DateTime?                         // تاريخ انتهاء الدفعة
+  isEnrollmentOpen Boolean         @default(true)    // هل التسجيل مفتوح؟
+
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  enrollments      Enrollment[]
+  tracks           Track[]
 
   @@index([status, type])
 }
@@ -137,10 +172,15 @@ model Assignment {
   allowedType  SubmissionType @default(URL_LINK)
   maxScore     Decimal        @default(100.00) @db.Decimal(5, 2)
   dueDate      DateTime?
+  status       AssignmentStatus       @default(DRAFT)   // جديد
+  publishedAt  DateTime?                                // تاريخ أول نشر
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   node         ActivityNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   submissions  Submission[]
+  attachments  AssignmentAttachment[]                   // جديد
+
+  @@index([status])
 }
 
 model Submission {
@@ -162,21 +202,43 @@ model Submission {
   @@index([status])
 }
 
+// model Enrollment {
+//   id          String           @id @default(uuid())
+//   userId      String
+//   programId   String
+//   status      EnrollmentStatus @default(ACTIVE)
+//   progressPct Float            @default(0.0)
+//   createdAt   DateTime         @default(now())
+//   updatedAt   DateTime         @updatedAt
+//   program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+//   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+//   @@unique([userId, programId])
+//   @@index([userId])
+//   @@index([programId])
+// }
+
+
 model Enrollment {
-  id          String           @id @default(uuid())
-  userId      String
-  programId   String
-  status      EnrollmentStatus @default(ACTIVE)
-  progressPct Float            @default(0.0)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  program     Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String           @id @default(uuid())
+  userId         String
+  programId      String
+  status         EnrollmentStatus @default(PENDING) // تبدأ كمعلقة لحين مراجعة الإيصال
+  progressPct    Float            @default(0.0)
+  paymentReceipt String?          // رابط صورة إيصال التحويل المالي
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  
+  program        Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, programId])
   @@index([userId])
   @@index([programId])
 }
+
+
+
 
 model ProgressLog {
   id              String       @id @default(uuid())
@@ -210,6 +272,21 @@ model Notification {
   @@index([userId, isRead])
   @@index([userId, createdAt])
 }
+
+
+model AssignmentAttachment {
+  id           String     @id @default(uuid())
+  assignmentId String
+  storageKey   String     @unique   // المسار الداخلي أو المفتاح
+  fileName     String                // الاسم الأصلي للملف للعرض والتحميل
+  mimeType     String
+  sizeBytes    Int
+  createdAt    DateTime   @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+}
+
 
 enum GlobalRole {
   SUPER_ADMIN
@@ -267,6 +344,7 @@ enum SubmissionStatus {
 }
 
 enum EnrollmentStatus {
+  PENDING
   ACTIVE
   COMPLETED
   DROPPED
@@ -278,4 +356,12 @@ enum NotificationType {
   ASSIGNMENT_DUE
   GRADED
   ANNOUNCEMENT
+}
+
+
+
+enum AssignmentStatus {
+  DRAFT      // مخفي عن الطلاب
+  PUBLISHED  // مرئي للطلاب المسجلين
+  ARCHIVED   // مخفي ولكن البيانات محفوظة
 }
