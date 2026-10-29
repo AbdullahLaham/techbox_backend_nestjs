@@ -134,8 +134,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
-    console.log('✅ [JwtStrategy] Payload decoded successfully:', payload);
-
     if (!payload || !payload.sub) {
       throw new UnauthorizedException('التوكن غير صالح');
     }

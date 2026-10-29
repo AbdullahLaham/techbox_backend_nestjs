@@ -1,15 +1,30 @@
 import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { GlobalRole, UserStatus } from '@prisma/client';
+import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import * as bcrypt from 'bcrypt';
+
+const DEFAULT_REFRESH_TTL_DAYS = 30;
+
+/** Refresh tokens are opaque; only their SHA-256 is stored, so a DB leak can't be replayed. */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function isBlocked(status: UserStatus): boolean {
+  return status === UserStatus.SUSPENDED || status === UserStatus.ARCHIVED;
+}
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private configService: ConfigService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -65,11 +80,15 @@ export class AuthService {
       throw new UnauthorizedException('بيانات الدخول غير صحيحة');
     }
 
-    const payload = { sub: user.id, email: user.email, globalRole: user.globalRole };
-    const accessToken = await this.jwtService.signAsync(payload);
+    // JwtStrategy rejects these accounts on every route, so don't hand them a session.
+    if (isBlocked(user.status)) {
+      throw new UnauthorizedException('الحساب غير نشط');
+    }
+
+    const tokens = await this.issueTokens(user);
 
     return {
-      accessToken,
+      ...tokens,
       user: {
         id: user.id,
         email: user.email,
@@ -79,5 +98,56 @@ export class AuthService {
         role: user.globalRole,
       },
     };
+  }
+
+  /**
+   * Rotate a refresh token: the presented token is consumed and a new access/refresh pair
+   * is returned. A token that was already used, revoked or expired gets 401.
+   */
+  async refresh(refreshToken: string) {
+    const session = await this.prisma.userSession.findUnique({
+      where: { refreshToken: hashToken(refreshToken) },
+      include: { user: { select: { id: true, email: true, globalRole: true, status: true } } },
+    });
+
+    if (!session) {
+      throw new UnauthorizedException('انتهت الجلسة، يرجى تسجيل الدخول مجدداً');
+    }
+
+    // Consume the token first; deleteMany avoids a throw if a concurrent request won the race.
+    const { count } = await this.prisma.userSession.deleteMany({ where: { id: session.id } });
+    if (count === 0 || session.expiresAt <= new Date() || isBlocked(session.user.status)) {
+      throw new UnauthorizedException('انتهت الجلسة، يرجى تسجيل الدخول مجدداً');
+    }
+
+    return this.issueTokens(session.user, session.deviceInfo);
+  }
+
+  /** Revoke one session. Unknown tokens are ignored so logout is idempotent. */
+  async logout(refreshToken: string) {
+    await this.prisma.userSession.deleteMany({ where: { refreshToken: hashToken(refreshToken) } });
+  }
+
+  private async issueTokens(
+    user: { id: string; email: string; globalRole: GlobalRole },
+    deviceInfo?: string | null,
+  ) {
+    const payload = { sub: user.id, email: user.email, globalRole: user.globalRole };
+    const accessToken = await this.jwtService.signAsync(payload);
+
+    const ttlDays =
+      Number(this.configService.get<string>('JWT_REFRESH_EXPIRATION_DAYS')) || DEFAULT_REFRESH_TTL_DAYS;
+    const refreshToken = randomBytes(48).toString('base64url');
+
+    await this.prisma.userSession.create({
+      data: {
+        userId: user.id,
+        refreshToken: hashToken(refreshToken),
+        deviceInfo: deviceInfo ?? null,
+        expiresAt: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return { accessToken, refreshToken };
   }
 }
