@@ -13,6 +13,7 @@ import { NodesModule } from './nodes/nodes.module.js';
 import { QuizzesModule } from './quizzes/quizzes.module.js';
 import { SubmissionsModule } from './submissions/submissions.module.js';
 import { ProgressModule } from './progress/progress.service.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
@@ -30,6 +31,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     QuizzesModule,
     SubmissionsModule,
     ProgressModule,
+    NotificationsModule,
   ],
   controllers: [AppController], // <--- اترك فقط الـ AppController هنا
   providers: [AppService],

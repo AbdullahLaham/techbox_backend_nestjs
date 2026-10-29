@@ -460,7 +460,26 @@ One entry per question; unanswered may be `null` or left out (scores 0). Respons
 
 ---
 
-## 9. Screen map
+## 9. Notifications
+
+The signed-in user's own in-app notifications (`AppNotification`: `id, type, title, message, isRead, actionUrl, createdAt`).
+
+| Method | Path | Response |
+|--------|------|----------|
+| GET | `/v1/notifications?page=&pageSize=&unreadOnly=` | `{ items, page, pageSize, total, unreadCount }`, newest first, `pageSize` ≤ 50 |
+| GET | `/v1/notifications/unread-count` | `{ unreadCount }` for the tab badge |
+| PATCH | `/v1/notifications/:id/read` | The notification (`404` if not yours) |
+| POST | `/v1/notifications/read-all` | `{ updated, unreadCount: 0 }` |
+
+| `type` | Sent when |
+|--------|-----------|
+| `NEW_ASSIGNMENT` | An assignment was published in one of your programs (ACTIVE enrollments) |
+| `ENROLLMENT` | An admin accepted, rejected, suspended, completed or removed your enrollment (message includes the admin's note) |
+| `GRADED` | A hand-in was graded, sent back for revision, or rejected |
+
+`actionUrl` → screen: `/assignments/<id>` → `assignment/[assignmentId]`; `/programs/<slug>` → `course/[slug]`; `null` → nothing to open.
+
+## 10. Screen map
 
 | Screen | Calls |
 |--------|-------|
@@ -474,3 +493,5 @@ One entry per question; unanswered may be `null` or left out (scores 0). Respons
 | Lesson | `GET /v1/nodes/:nodeId` |
 | Quiz | `GET /v1/quizzes/:quizId`, `POST /v1/quizzes/:quizId/attempts` |
 | Quiz result / history | `GET /v1/quizzes/attempts/:attemptId`, `GET /v1/quizzes/:quizId/attempts` |
+| Video / reading progress | `POST /v1/nodes/:nodeId/progress` |
+| Notifications tab | `GET /v1/notifications`, `GET /v1/notifications/unread-count`, `PATCH /v1/notifications/:id/read`, `POST /v1/notifications/read-all` |

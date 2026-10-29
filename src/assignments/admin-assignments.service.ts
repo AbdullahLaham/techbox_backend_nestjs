@@ -1,13 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AssignmentStatus,
+  EnrollmentStatus,
   NodeType,
+  NotificationType,
   Prisma,
   ProgramStatus,
   SubmissionStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service.js';
 import { AssignmentException, validationFailed } from './assignment-errors.js';
 import {
@@ -84,6 +87,7 @@ export class AdminAssignmentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* --------------------------------- A1 ---------------------------------- */
@@ -270,7 +274,29 @@ export class AdminAssignmentsService {
     }
 
     this.audit(userId, `assignment.status.${next.toLowerCase()}`, id);
-    return this.findOne(id);
+    const detail = await this.findOne(id);
+    // A (first or renewed) publish tells the program's active learners; restoring from ARCHIVED does not.
+    if (data.publishedAt instanceof Date) await this.notifyPublished(detail);
+    return detail;
+  }
+
+  private async notifyPublished(assignment: AdminAssignmentDetail) {
+    const program = await this.prisma.program.findUnique({
+      where: { id: assignment.program.id },
+      select: { status: true, enrollments: { where: { status: EnrollmentStatus.ACTIVE }, select: { userId: true } } },
+    });
+    // Learners only see assignments of visible programs (assignments spec 4.2).
+    const visible: ProgramStatus[] = [ProgramStatus.PUBLISHED, ProgramStatus.ONGOING, ProgramStatus.COMPLETED];
+    if (!program || !visible.includes(program.status)) return;
+    await this.notifications.notify(
+      program.enrollments.map((e) => e.userId),
+      {
+        type: NotificationType.NEW_ASSIGNMENT,
+        title: 'واجب جديد',
+        message: `${assignment.title}: ${assignment.program.title}`,
+        actionUrl: `/assignments/${assignment.id}`,
+      },
+    );
   }
 
   /* --------------------------------- A6 ---------------------------------- */

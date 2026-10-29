@@ -323,6 +323,10 @@ The web learner pages use the same endpoints and shapes as the mobile app (`api-
 | `/assignments/[id]` | `GET /v1/assignments/:id`, `GET /v1/assignments/:id/my-submission`, `POST /v1/assignments/:id/submit` |
 | Lessons | `GET /v1/nodes/:nodeId` |
 | Quizzes | `GET /v1/quizzes/:quizId`, `POST /v1/quizzes/:quizId/attempts`, `GET /v1/quizzes/attempts/:attemptId` |
+| Lesson progress | `POST /v1/nodes/:nodeId/progress` (video `positionSec`, reading `completed: true`) |
+| Notification bell | `GET /v1/notifications`, `GET /v1/notifications/unread-count`, `PATCH /v1/notifications/:id/read`, `POST /v1/notifications/read-all` (see `api-contract-mobile.md` §9; `actionUrl` `/assignments/<id>` → `/assignments/[id]`, `/programs/<slug>` → `/programs/[slug]`) |
+
+Notifications sent by admin actions: publishing an assignment notifies the program's ACTIVE learners (`NEW_ASSIGNMENT`), changing an enrollment status notifies the student with your note (`ENROLLMENT`), grading notifies the student (`GRADED`).
 
 Hand-in from the browser (`submissions.contract.ts`):
 

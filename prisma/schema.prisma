@@ -435,8 +435,10 @@ enum NodeResourceKind {
 enum NotificationType {
   SYSTEM
   ASSIGNMENT_DUE
-  GRADED
+  GRADED          // تقييم تسليم واجب (مقبول، يحتاج تعديل، مرفوض)
   ANNOUNCEMENT
+  ENROLLMENT      // قرار الإدارة في طلب التسجيل
+  NEW_ASSIGNMENT  // نشر واجب جديد في برنامج الطالب
 }
 
 enum AssignmentStatus {

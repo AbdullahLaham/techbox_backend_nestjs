@@ -1,8 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EnrollmentStatus, Prisma } from '@prisma/client';
+import { EnrollmentStatus, NotificationType, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { EMPTY_PROGRESS, ProgressService, type ProgramProgress } from '../progress/progress.service.js';
 import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service.js';
 import { apiError } from '../common/api-errors.js';
@@ -31,6 +32,16 @@ import { EnrollDto } from './dto/enroll.dto.js';
 import { AdminEnrollmentListQueryDto, UpdateEnrollmentStatusDto } from './dto/admin-enrollment.dto.js';
 
 const RECEIPT_URL_TTL_SEC = 3600;
+
+/** Title of the notification the student gets when an admin changes their enrollment. */
+const ENROLLMENT_NOTIFICATION_TITLES: Record<EnrollmentStatus, string> = {
+  ACTIVE: 'تم قبول طلب انضمامك',
+  REJECTED: 'لم يتم قبول طلب انضمامك',
+  PENDING: 'طلب انضمامك قيد المراجعة مجدداً',
+  SUSPENDED: 'تم إيقاف وصولك إلى البرنامج مؤقتاً',
+  COMPLETED: 'تهانينا، أتممت البرنامج',
+  DROPPED: 'تم إلغاء تسجيلك في البرنامج',
+};
 
 const MY_ENROLLMENT_WITH_PROGRAM = {
   ...MY_ENROLLMENT_SELECT,
@@ -92,6 +103,7 @@ export class EnrollmentsService {
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
     private readonly progress: ProgressService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /* ------------------------------- Student -------------------------------- */
@@ -264,7 +276,14 @@ export class EnrollmentsService {
     this.logger.log(
       JSON.stringify({ userId: viewer.id, action: `enrollment.status.${dto.status.toLowerCase()}`, enrollmentId: id }),
     );
-    return this.detail(id);
+    const detail = await this.detail(id);
+    await this.notifications.notify([detail.user.id], {
+      type: NotificationType.ENROLLMENT,
+      title: ENROLLMENT_NOTIFICATION_TITLES[dto.status],
+      message: dto.note ? `${detail.program.title}: ${dto.note}` : detail.program.title,
+      actionUrl: `/programs/${detail.program.slug}`,
+    });
+    return detail;
   }
 
   /* ------------------------------- Helpers -------------------------------- */

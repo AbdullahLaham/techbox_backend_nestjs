@@ -89,6 +89,11 @@ export const API_ENDPOINTS = {
   adminEnrollments: '/v1/admin/enrollments',
   adminEnrollment: (id: string) => `/v1/admin/enrollments/${encodeURIComponent(id)}`,
   adminEnrollmentStatus: (id: string) => `/v1/admin/enrollments/${encodeURIComponent(id)}/status`,
+  // Notifications (Bearer, the caller's own)
+  notifications: '/v1/notifications',
+  notificationsUnreadCount: '/v1/notifications/unread-count',
+  notificationRead: (id: string) => `/v1/notifications/${encodeURIComponent(id)}/read`,
+  notificationsReadAll: '/v1/notifications/read-all',
 } as const;
 
 /* ================================ Common ================================ */
@@ -627,6 +632,53 @@ export function canAccessContent(status: EnrollmentStatus | null | undefined): b
 export function canApply(status: EnrollmentStatus | null | undefined): boolean {
   return !status || status === 'REJECTED' || status === 'DROPPED';
 }
+
+/* ============================= Notifications ============================ */
+
+/**
+ * GRADED: a reviewer graded, rejected or asked to revise a hand-in.
+ * ENROLLMENT: an admin accepted, rejected, suspended, completed or removed an enrollment.
+ * NEW_ASSIGNMENT: an assignment was published in one of the learner's programs.
+ * SYSTEM, ANNOUNCEMENT, ASSIGNMENT_DUE: reserved (not sent yet).
+ */
+export type NotificationType = 'SYSTEM' | 'ASSIGNMENT_DUE' | 'GRADED' | 'ANNOUNCEMENT' | 'ENROLLMENT' | 'NEW_ASSIGNMENT';
+
+export type AppNotification = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  /**
+   * Where the notification leads, as a resource path the app maps to its own screen:
+   *  - `/assignments/<assignmentId>`
+   *  - `/programs/<slug>`
+   * null when there is nothing to open.
+   */
+  actionUrl: string | null;
+  createdAt: IsoDate;
+};
+
+/** GET /v1/notifications?page=&pageSize=&unreadOnly= (newest first). */
+export type NotificationListQuery = {
+  /** Default 1 */
+  page?: number;
+  /** Default 20, max 50 */
+  pageSize?: number;
+  /** Default false */
+  unreadOnly?: boolean;
+};
+
+export type NotificationList = Paginated<AppNotification> & {
+  /** All unread notifications of the user (not only this page). */
+  unreadCount: number;
+};
+
+/** GET /v1/notifications/unread-count (cheap, for the bell badge). */
+export type UnreadCount = { unreadCount: number };
+
+/** POST /v1/notifications/read-all */
+export type ReadAllResult = { updated: number; unreadCount: 0 };
 
 /* ================================ Labels ================================ */
 
