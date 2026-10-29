@@ -3,6 +3,7 @@ import { EnrollmentStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { EMPTY_PROGRESS, ProgressService, type ProgramProgress } from '../progress/progress.service.js';
 import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service.js';
 import { apiError } from '../common/api-errors.js';
 import { inspectUpload } from '../common/uploads.js';
@@ -90,6 +91,7 @@ export class EnrollmentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly progress: ProgressService,
   ) {}
 
   /* ------------------------------- Student -------------------------------- */
@@ -165,17 +167,19 @@ export class EnrollmentsService {
       await this.deleteFile(existing.paymentReceipt);
     }
     this.logger.log(JSON.stringify({ userId, action: existing ? 'enrollment.reapply' : 'enrollment.apply', enrollmentId: saved.id }));
-    return toMyEnrollment(saved);
+    const progress = await this.progress.forEnrollments([saved.id]);
+    return toMyEnrollment(saved, progress.get(saved.id));
   }
 
-  /** GET /v1/enrollments/my-enrollments */
+  /** GET /v1/enrollments/my-enrollments (with live progress per program). */
   async myEnrollments(userId: string): Promise<MyEnrollment[]> {
     const rows = await this.prisma.enrollment.findMany({
       where: { userId },
       select: MY_ENROLLMENT_WITH_PROGRAM,
       orderBy: { createdAt: 'desc' },
     });
-    return rows.map(toMyEnrollment);
+    const progress = await this.progress.forEnrollments(rows.map((r) => r.id), { persist: true });
+    return rows.map((r) => toMyEnrollment(r, progress.get(r.id)));
   }
 
   /* -------------------------------- Admin --------------------------------- */
@@ -205,8 +209,9 @@ export class EnrollmentsService {
     const statusCounts = Object.fromEntries(ENROLLMENT_STATUSES.map((s) => [s, 0])) as Record<ContractEnrollmentStatus, number>;
     for (const g of groups) statusCounts[g.status] = (g._count as { _all: number })._all;
 
+    const progress = await this.progress.forEnrollments(rows.map((r) => r.id), { persist: true });
     return {
-      items: rows.map(toAdminListItem),
+      items: rows.map((r) => toAdminListItem(r, progress.get(r.id))),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -297,7 +302,8 @@ export class EnrollmentsService {
           })
         : null;
     const profile = row.user.profile;
-    const item = toAdminListItem(row);
+    const progress = await this.progress.forEnrollments([row.id], { persist: true });
+    const item = toAdminListItem(row, progress.get(row.id));
     return {
       ...item,
       user: {
@@ -338,9 +344,12 @@ function searchConditions(q: string): Prisma.EnrollmentWhereInput[] {
   ];
 }
 
-function toMyEnrollment(row: Prisma.EnrollmentGetPayload<{ select: typeof MY_ENROLLMENT_WITH_PROGRAM }>): MyEnrollment {
+function toMyEnrollment(
+  row: Prisma.EnrollmentGetPayload<{ select: typeof MY_ENROLLMENT_WITH_PROGRAM }>,
+  progress?: ProgramProgress,
+): MyEnrollment {
   return {
-    ...toMyEnrollmentRef(row),
+    ...toMyEnrollmentRef(row, progress),
     program: {
       id: row.program.id,
       title: row.program.title,
@@ -354,12 +363,14 @@ function toMyEnrollment(row: Prisma.EnrollmentGetPayload<{ select: typeof MY_ENR
   };
 }
 
-function toAdminListItem(row: AdminRow): AdminEnrollmentListItem {
+function toAdminListItem(row: AdminRow, progress: ProgramProgress = EMPTY_PROGRESS): AdminEnrollmentListItem {
   const profile = row.user.profile;
   return {
     id: row.id,
     status: row.status,
-    progressPct: row.progressPct,
+    progressPct: progress.percent,
+    completedLessons: progress.completedLessons,
+    totalLessons: progress.totalLessons,
     hasReceipt: !!row.paymentReceipt,
     reviewNote: row.reviewNote,
     reviewedAt: row.reviewedAt?.toISOString() ?? null,

@@ -27,7 +27,7 @@ import { UploadRateLimitGuard } from '../common/uploads.js';
 import { CONTENT_MANAGER_ROLES, CONTENT_OWNER_ROLES } from '../types/api.contract.js';
 import { NODE_FILE_LIMITS } from '../types/nodes.contract.js';
 import { NodesService } from './nodes.service.js';
-import { CreateNodeDto, ListNodesQuery, UpdateNodeDto } from './dto/node.dto.js';
+import { CreateNodeDto, ListNodesQuery, UpdateLessonProgressDto, UpdateNodeDto } from './dto/node.dto.js';
 
 /** Dashboard lesson management (api-contract-admin.md, "Nodes"). */
 @Controller('v1/admin/nodes')
@@ -95,5 +95,12 @@ export class NodesController {
   @Get(':nodeId')
   content(@Req() req: any, @Param('nodeId') nodeId: string) {
     return this.nodes.content(req.user, nodeId);
+  }
+
+  /** Video position / completion, reading completion (LessonProgressResult). */
+  @Post(':nodeId/progress')
+  @HttpCode(HttpStatus.OK)
+  recordProgress(@Req() req: any, @Param('nodeId') nodeId: string, @Body() dto: UpdateLessonProgressDto) {
+    return this.nodes.recordProgress(req.user, nodeId, dto);
   }
 }

@@ -144,6 +144,7 @@ Public visibility: the catalog shows `PUBLISHED` and `ONGOING`; the detail page 
 - `q` matches email, names, phone, national id. `sort`: `createdAt`, `-createdAt` (default), `updatedAt`, `-updatedAt`.
 - `AdminEnrollmentList` = `{ items, page, pageSize, total, statusCounts }`; `statusCounts` covers the same filters ignoring `status` (for the tabs).
 - Detail adds the applicant's age, national id, governorate, phone, and `receiptUrl` (signed) + `receiptMimeType`.
+- List items and detail carry the learner's live progress: `progressPct`, `completedLessons`, `totalLessons` (mandatory visible lessons; see `docs/updates/01-program-progress.md`).
 - Status changes (`ENROLLMENT_STATUS_TRANSITIONS`):
 
 | From | To |

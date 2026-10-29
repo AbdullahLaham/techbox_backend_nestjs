@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { apiError } from '../common/api-errors.js';
 import { NodeAccessService } from '../nodes/node-access.service.js';
+import { ProgressService } from '../progress/progress.service.js';
 import { isStaff, type Viewer } from '../programs/program-mapping.js';
 import type { MyQuizAttempt, QuizAttemptResult, QuizResultQuestion, StudentQuiz } from '../types/nodes.contract.js';
 import {
@@ -24,6 +25,7 @@ export class QuizzesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: NodeAccessService,
+    private readonly progress: ProgressService,
   ) {}
 
   /** GET /v1/quizzes/:quizId: questions and options without correctness. */
@@ -134,6 +136,8 @@ export class QuizzesService {
     });
 
     this.logger.log(JSON.stringify({ userId: viewer.id, action: 'quiz.attempt', quizId, attemptId: attempt.id, passed }));
+    // A pass completes the lesson: refresh the learner's program progress.
+    if (passed) await this.progress.refreshForLesson(viewer.id, quiz.nodeId);
     return result(attempt.id, attempt.attemptNumber, attempt.submittedAt, attempt.attemptNumber);
   }
 

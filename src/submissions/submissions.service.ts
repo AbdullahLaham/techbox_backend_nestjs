@@ -6,6 +6,7 @@ import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service
 import { apiError } from '../common/api-errors.js';
 import { inspectUpload, type InspectedFile } from '../common/uploads.js';
 import { visibleTo } from '../assignments/assignments.service.js';
+import { ProgressService } from '../progress/progress.service.js';
 import type { Viewer } from '../programs/program-mapping.js';
 import {
   SUBMISSION_LIMITS,
@@ -98,6 +99,7 @@ export class SubmissionsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly progress: ProgressService,
   ) {}
 
   /* -------------------------------- Student ------------------------------- */
@@ -316,6 +318,10 @@ export class SubmissionsService {
     this.logger.log(
       JSON.stringify({ userId: viewer.id, action: `submission.${dto.status.toLowerCase()}`, submissionId, assignmentId: current.assignmentId }),
     );
+    // GRADED completes the assignment lesson: refresh the student's program progress.
+    if (dto.status === SubmissionStatus.GRADED) {
+      await this.progress.refreshForLesson(current.studentId, current.assignment.nodeId);
+    }
     return this.detail(submissionId);
   }
 

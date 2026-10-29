@@ -25,6 +25,7 @@ export type NodeResourceKind = 'LINK' | 'FILE';
 export const NODES_ENDPOINTS = {
   // Student (Bearer)
   node: (nodeId: string) => `/v1/nodes/${encodeURIComponent(nodeId)}`,
+  nodeProgress: (nodeId: string) => `/v1/nodes/${encodeURIComponent(nodeId)}/progress`,
   quiz: (quizId: string) => `/v1/quizzes/${encodeURIComponent(quizId)}`,
   quizAttempts: (quizId: string) => `/v1/quizzes/${encodeURIComponent(quizId)}/attempts`,
   quizAttempt: (attemptId: string) => `/v1/quizzes/attempts/${encodeURIComponent(attemptId)}`,
@@ -147,6 +148,45 @@ export type NodeContent = {
   resource: StudentNodeResource | null;
   /** null for QUIZ lessons whose quiz is not published yet. */
   quiz: StudentQuizSummary | null;
+  /** The learner's progress on this lesson (resume position for videos). Zeros for staff. */
+  progress: LessonProgress;
+};
+
+/* ============================ Lesson progress =========================== */
+
+/** A video counts as completed once this share of it was watched. */
+export const VIDEO_COMPLETION_THRESHOLD = 0.9;
+
+export type LessonProgress = {
+  isCompleted: boolean;
+  /** 0 to 100 */
+  completionPct: number;
+  /** Where to resume a video. */
+  lastPositionSec: number;
+  /** Highest position reached (seconds). */
+  watchedSeconds: number;
+};
+
+/**
+ * POST /v1/nodes/:nodeId/progress. VIDEO_LECTURE and READING_MATERIAL only (QUIZ lessons
+ * complete by passing, ASSIGNMENT lessons by being graded: 400 otherwise).
+ *  - Video: send `positionSec` every ~15 s and on pause/exit; completed at
+ *    VIDEO_COMPLETION_THRESHOLD of the duration, or with `completed: true`.
+ *  - Reading: send `{ completed: true }` when the learner marks it done.
+ * Completion is never undone.
+ */
+export type UpdateLessonProgressBody = {
+  positionSec?: number;
+  completed?: boolean;
+};
+
+/** Response of POST /v1/nodes/:nodeId/progress. */
+export type LessonProgressResult = LessonProgress & {
+  nodeId: string;
+  /** false for staff previews: nothing is saved. */
+  recorded: boolean;
+  /** The learner's program progress after this update (null for staff). */
+  programProgress: { completedLessons: number; totalLessons: number; percent: number } | null;
 };
 
 export type StudentQuizOption = { id: string; text: string };

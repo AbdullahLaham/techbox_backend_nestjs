@@ -369,7 +369,20 @@ For learners with an ACTIVE or COMPLETED enrollment in the lesson's program; oth
 | `READING_MATERIAL` | `resource`: `kind` `LINK` (external page) or `FILE` (signed download) |
 | `QUIZ` | `quiz` summary (null when not published), then section 8 |
 
-`isCompleted`: the learner finished the lesson (for quizzes: passed once).
+`isCompleted`: the learner finished the lesson (for quizzes: passed once). `progress: { isCompleted, completionPct, lastPositionSec, watchedSeconds }`: resume a video from `lastPositionSec`.
+
+### `POST /v1/nodes/:nodeId/progress`: report progress
+
+Video and reading lessons only (quizzes complete by passing, assignments by being graded; others `400`).
+
+| Body | When |
+|------|------|
+| `{ "positionSec": 312 }` | Video: about every 15 s, on pause and when leaving. Completes at 90% of the duration |
+| `{ "completed": true }` | Reading (the "تم الانتهاء" button), or a video the player cannot track |
+
+Response `200` (`LessonProgressResult`): `{ nodeId, isCompleted, completionPct, lastPositionSec, watchedSeconds, recorded, programProgress: { completedLessons, totalLessons, percent } }`. Completion is never undone.
+
+Program progress = completed / counted lessons (mandatory lessons, quizzes and assignments once published). It appears as `myEnrollment.progressPct`, `completedLessons`, `totalLessons` (program screen, `my-enrollments`), and each curriculum lesson has `isCompleted`.
 
 ---
 

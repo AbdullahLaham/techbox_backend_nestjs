@@ -246,8 +246,24 @@ export type MyEnrollmentRef = {
   reviewNote: string | null;
   reviewedAt: IsoDate | null;
   hasReceipt: boolean;
+  /** completedLessons / totalLessons * 100, 1 decimal (see ProgramProgress). */
   progressPct: number;
+  completedLessons: number;
+  totalLessons: number;
   createdAt: IsoDate;
+};
+
+/**
+ * Progress in a program. Counted lessons: mandatory lessons the student can see (QUIZ and
+ * ASSIGNMENT lessons only once published). A lesson is done when the video was watched
+ * (90%) or marked done, the reading was marked done, the quiz was passed, or the
+ * assignment was graded.
+ */
+export type ProgramProgress = {
+  completedLessons: number;
+  totalLessons: number;
+  /** 0 to 100, 1 decimal; 0 when the program has no counted lessons. */
+  percent: number;
 };
 
 export type ProgramNodeVideo = {
@@ -277,6 +293,8 @@ export type ProgramNode = {
   isMandatory: boolean;
   /** true when the caller cannot open this lesson yet. */
   isLocked: boolean;
+  /** The signed-in learner completed this lesson (always false when anonymous or staff). */
+  isCompleted: boolean;
   video: ProgramNodeVideo | null;
   assignment: ProgramNodeAssignment | null;
 };
@@ -542,7 +560,10 @@ export type AdminEnrollmentUser = {
 export type AdminEnrollmentListItem = {
   id: string;
   status: EnrollmentStatus;
+  /** Current progress (ProgramProgress.percent). */
   progressPct: number;
+  completedLessons: number;
+  totalLessons: number;
   hasReceipt: boolean;
   reviewNote: string | null;
   reviewedAt: IsoDate | null;

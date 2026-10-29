@@ -129,6 +129,19 @@ export class UpdateNodeDto extends PartialType(OmitType(CreateNodeDto, ['moduleI
   video?: PartialNodeVideoDto;
 }
 
+/** Body of POST /v1/nodes/:nodeId/progress (UpdateLessonProgressBody). */
+export class UpdateLessonProgressDto {
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(24 * 60 * 60)
+  positionSec?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  completed?: boolean;
+}
+
 export class ListNodesQuery {
   @Trim()
   @IsString()

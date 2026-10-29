@@ -130,8 +130,10 @@ export const MY_ENROLLMENT_SELECT = {
   createdAt: true,
 } satisfies Prisma.EnrollmentSelect;
 
+/** `progress` comes from ProgressService (computed live); without it the stored column is used. */
 export function toMyEnrollmentRef(
   row: Prisma.EnrollmentGetPayload<{ select: typeof MY_ENROLLMENT_SELECT }>,
+  progress?: { completedLessons: number; totalLessons: number; percent: number },
 ): MyEnrollmentRef {
   return {
     id: row.id,
@@ -139,7 +141,9 @@ export function toMyEnrollmentRef(
     reviewNote: row.reviewNote,
     reviewedAt: iso(row.reviewedAt),
     hasReceipt: !!row.paymentReceipt,
-    progressPct: row.progressPct,
+    progressPct: progress?.percent ?? row.progressPct,
+    completedLessons: progress?.completedLessons ?? 0,
+    totalLessons: progress?.totalLessons ?? 0,
     createdAt: row.createdAt.toISOString(),
   };
 }

@@ -7,10 +7,19 @@ import { apiError } from '../common/api-errors.js';
 import { inspectUpload } from '../common/uploads.js';
 import type { Viewer } from '../programs/program-mapping.js';
 import { isStaff } from '../programs/program-mapping.js';
-import { MANAGED_NODE_TYPES, NODE_FILE_LIMITS, type AdminNodeDetail, type NodeContent } from '../types/nodes.contract.js';
+import {
+  MANAGED_NODE_TYPES,
+  NODE_FILE_LIMITS,
+  VIDEO_COMPLETION_THRESHOLD,
+  type AdminNodeDetail,
+  type LessonProgress,
+  type LessonProgressResult,
+  type NodeContent,
+} from '../types/nodes.contract.js';
 import { toAdminQuizSummary, toStudentSummary } from '../quizzes/quiz-logic.js';
+import { ProgressService } from '../progress/progress.service.js';
 import { NodeAccessService } from './node-access.service.js';
-import { CreateNodeDto, UpdateNodeDto } from './dto/node.dto.js';
+import { CreateNodeDto, UpdateLessonProgressDto, UpdateNodeDto } from './dto/node.dto.js';
 
 const FILE_URL_TTL_SEC = 3600;
 const MANAGED = MANAGED_NODE_TYPES as NodeType[];
@@ -60,6 +69,17 @@ function externalIdFromUrl(url: string): string {
   }
 }
 
+function toLessonProgress(
+  log?: { isCompleted: boolean; completionPct: number; lastPositionSec: number; watchedSeconds: number },
+): LessonProgress {
+  return {
+    isCompleted: log?.isCompleted ?? false,
+    completionPct: log?.completionPct ?? 0,
+    lastPositionSec: log?.lastPositionSec ?? 0,
+    watchedSeconds: log?.watchedSeconds ?? 0,
+  };
+}
+
 const onlyFor = (field: string, type: string) =>
   apiError('VALIDATION_FAILED', `${field} is only allowed for ${type} lessons.`, { [field]: `هذا الحقل خاص بدروس ${type}` });
 
@@ -74,6 +94,7 @@ export class NodesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: NodeAccessService,
+    private readonly progress: ProgressService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
@@ -275,10 +296,14 @@ export class NodesService {
             },
           },
         },
-        progress: { where: { userId: viewer.id }, select: { isCompleted: true } },
+        progress: {
+          where: { userId: viewer.id },
+          select: { isCompleted: true, completionPct: true, lastPositionSec: true, watchedSeconds: true },
+        },
       },
     });
     if (!node || !MANAGED.includes(node.type)) throw apiError('NOT_FOUND', 'Lesson not found.');
+    const log = isStaff(viewer) ? undefined : node.progress[0];
 
     return {
       id: node.id,
@@ -288,11 +313,71 @@ export class NodesService {
       title: node.title,
       description: node.description,
       isMandatory: node.isMandatory,
-      isCompleted: !isStaff(viewer) && (node.progress[0]?.isCompleted ?? false),
+      isCompleted: log?.isCompleted ?? false,
       video: node.video,
       resource: node.resource ? await this.toResource(node.resource) : null,
       quiz: node.quiz?.isPublished ? toStudentSummary(node.quiz, node.quiz.attempts) : null,
+      progress: toLessonProgress(log),
     };
+  }
+
+  /**
+   * POST /v1/nodes/:nodeId/progress: video position and completion, reading completion.
+   * Quiz and assignment lessons complete through their own flows. Never un-completes.
+   */
+  async recordProgress(viewer: Viewer, nodeId: string, dto: UpdateLessonProgressDto): Promise<LessonProgressResult> {
+    await this.access.assertLearnerAccess(nodeId, viewer);
+    const node = await this.prisma.activityNode.findUnique({
+      where: { id: nodeId },
+      select: {
+        type: true,
+        video: { select: { durationSec: true } },
+        progress: {
+          where: { userId: viewer.id },
+          select: { isCompleted: true, completionPct: true, lastPositionSec: true, watchedSeconds: true },
+        },
+      },
+    });
+    if (!node) throw apiError('NOT_FOUND', 'Lesson not found.');
+    if (node.type !== NodeType.VIDEO_LECTURE && node.type !== NodeType.READING_MATERIAL) {
+      throw apiError('VALIDATION_FAILED', 'This lesson completes through its quiz or assignment.', {
+        type: 'هذا الدرس يكتمل باجتياز الاختبار أو تقييم الواجب',
+      });
+    }
+    if (dto.positionSec !== undefined && node.type !== NodeType.VIDEO_LECTURE) {
+      throw onlyFor('positionSec', NodeType.VIDEO_LECTURE);
+    }
+
+    const current = node.progress[0];
+    let next: LessonProgress = toLessonProgress(current);
+    if (node.type === NodeType.VIDEO_LECTURE) {
+      const duration = node.video?.durationSec ?? 0;
+      const position = Math.min(dto.positionSec ?? next.lastPositionSec, duration || Number.MAX_SAFE_INTEGER);
+      const watched = Math.max(next.watchedSeconds, position);
+      const reached = duration > 0 ? Math.min(100, Math.round((watched / duration) * 1000) / 10) : 0;
+      const completed =
+        next.isCompleted || dto.completed === true || (duration > 0 && watched >= duration * VIDEO_COMPLETION_THRESHOLD);
+      next = {
+        isCompleted: completed,
+        completionPct: completed ? 100 : Math.max(next.completionPct, reached),
+        lastPositionSec: position,
+        watchedSeconds: watched,
+      };
+    } else if (dto.completed === true) {
+      next = { ...next, isCompleted: true, completionPct: 100 };
+    }
+
+    // Staff can preview lessons; their progress is not recorded.
+    if (isStaff(viewer)) return { ...next, nodeId, recorded: false, programProgress: null };
+
+    await this.prisma.progressLog.upsert({
+      where: { userId_nodeId: { userId: viewer.id, nodeId } },
+      create: { userId: viewer.id, nodeId, ...next },
+      update: next,
+    });
+    const programProgress = await this.progress.refreshForLesson(viewer.id, nodeId);
+    if (next.isCompleted && !current?.isCompleted) this.audit(viewer, 'node.complete', nodeId);
+    return { ...next, nodeId, recorded: true, programProgress };
   }
 
   /* ------------------------------- Helpers -------------------------------- */

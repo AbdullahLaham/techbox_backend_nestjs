@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AssignmentStatus, NodeType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ProgressService } from '../progress/progress.service.js';
 import { apiError } from '../common/api-errors.js';
 import {
   canAccessContent,
@@ -76,7 +77,10 @@ type NodeRow = Prisma.ActivityNodeGetPayload<{
 /** Public catalog and program detail (GET /v1/programs, GET /v1/programs/:slug). */
 @Injectable()
 export class ProgramsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly progress: ProgressService,
+  ) {}
 
   async catalog(): Promise<ProgramSummary[]> {
     const rows = await this.prisma.program.findMany({
@@ -108,7 +112,19 @@ export class ProgramsService {
         : null,
     ]);
 
-    const myEnrollment = enrollment ? toMyEnrollmentRef(enrollment) : null;
+    // Live progress and the lessons this learner completed (ticks in the curriculum).
+    const [progress, completed] = enrollment
+      ? await Promise.all([
+          this.progress.forEnrollments([enrollment.id], { persist: true }),
+          this.prisma.progressLog.findMany({
+            where: { userId: viewer!.id, isCompleted: true, node: { module: { track: { programId: row.id } } } },
+            select: { nodeId: true },
+          }),
+        ])
+      : [undefined, []];
+    const completedIds = new Set(completed.map((c) => c.nodeId));
+
+    const myEnrollment = enrollment ? toMyEnrollmentRef(enrollment, progress?.get(enrollment.id)) : null;
     const unlocked = isStaff(viewer) || canAccessContent(myEnrollment?.status);
 
     return {
@@ -125,7 +141,7 @@ export class ProgramsService {
           title: module.title,
           description: module.description,
           orderIndex: module.orderIndex,
-          nodes: module.nodes.flatMap((node) => toPublicNode(node, unlocked) ?? []),
+          nodes: module.nodes.flatMap((node) => toPublicNode(node, unlocked, completedIds.has(node.id)) ?? []),
         })),
       })),
       myEnrollment,
@@ -140,7 +156,7 @@ export class ProgramsService {
  * Assignment lessons appear only once their assignment is PUBLISHED, like the
  * assignments API; an ASSIGNMENT lesson without an assignment row is skipped.
  */
-function toPublicNode(node: NodeRow, unlocked: boolean): ProgramNode | null {
+function toPublicNode(node: NodeRow, unlocked: boolean, isCompleted: boolean): ProgramNode | null {
   if (node.type === NodeType.ASSIGNMENT && node.assignment?.status !== AssignmentStatus.PUBLISHED) {
     return null;
   }
@@ -157,6 +173,7 @@ function toPublicNode(node: NodeRow, unlocked: boolean): ProgramNode | null {
     orderIndex: node.orderIndex,
     isMandatory: node.isMandatory,
     isLocked: !unlocked,
+    isCompleted,
     video: node.video
       ? { durationSec: node.video.durationSec, playbackUrl: unlocked ? node.video.playbackUrl : null }
       : null,
