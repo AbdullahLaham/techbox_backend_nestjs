@@ -22,9 +22,13 @@ export type CreateAssignmentInput = {
   dueDate: Date | null;
   isMandatory: boolean;
   orderIndex?: number;
+  /** Lesson description; not part of the assignments API, set by the curriculum editor. */
+  description?: string | null;
 };
 
 export type UpdateAssignmentInput = {
+  /** Lesson description; not part of the assignments API, set by the curriculum editor. */
+  description?: string | null;
   title?: string;
   instructions?: string;
   allowedType?: SubmissionType;

@@ -19,6 +19,7 @@ model User {
   progressLogs      ProgressLog[]
   gradedSubmissions Submission[]   @relation("GraderSubmissions")
   submissions       Submission[]
+  quizAttempts      QuizAttempt[]
   profile           UserProfile?
   sessions          UserSession[]
 
@@ -26,30 +27,28 @@ model User {
   @@index([globalRole, status])
 }
 
-
 model UserProfile {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  firstName     String
-  lastName      String
-  phoneNumber   String?  @unique
-  avatarUrl     String?
-  bio           String?
-  
+  id          String  @id @default(uuid())
+  userId      String  @unique
+  firstName   String
+  lastName    String
+  phoneNumber String? @unique
+  avatarUrl   String?
+  bio         String?
+
   // === البيانات الإضافية للتسجيل ===
-  fullNameAr    String?  // الاسم ثلاثي بالعربي
-  fullNameEn    String?  // الاسم الكامل بالإنجليزية
-  age           Int?     // العمر
-  phoneWhatsApp String?  // رقم الجوال مع مقدمة الواتساب
-  nationalId    String?  // رقم الهوية
-  governorate   String?  // المحافظة التي يسكن بها
+  fullNameAr    String? // الاسم ثلاثي بالعربي
+  fullNameEn    String? // الاسم الكامل بالإنجليزية
+  age           Int? // العمر
+  phoneWhatsApp String? // رقم الجوال مع مقدمة الواتساب
+  nationalId    String? // رقم الهوية
+  governorate   String? // المحافظة التي يسكن بها
 
-  metadata      Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
-
 
 model UserSession {
   id           String   @id @default(uuid())
@@ -80,26 +79,25 @@ model UserSession {
 //   @@index([status, type])
 // }
 
-
 model Program {
-  id               String          @id @default(uuid())
-  title            String
-  slug             String          @unique
-  description      String?
-  type             ProgramType     @default(ACADEMIC_COURSE)
-  status           ProgramStatus   @default(DRAFT)
-  coverImage       String?
-  
-  // === خصائص الدفعة والمقاعد (Cohort-Based Scarcity) ===
-  maxSeats         Int?            @default(30)      // الحد الأقصى للمقاعد
-  startDate        DateTime?                         // تاريخ بدء الدفعة
-  endDate          DateTime?                         // تاريخ انتهاء الدفعة
-  isEnrollmentOpen Boolean         @default(true)    // هل التسجيل مفتوح؟
+  id          String        @id @default(uuid())
+  title       String
+  slug        String        @unique
+  description String?
+  type        ProgramType   @default(ACADEMIC_COURSE)
+  status      ProgramStatus @default(DRAFT)
+  coverImage  String?
 
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  enrollments      Enrollment[]
-  tracks           Track[]
+  // === خصائص الدفعة والمقاعد (Cohort-Based Scarcity) ===
+  maxSeats         Int?      @default(30) // الحد الأقصى للمقاعد
+  startDate        DateTime? // تاريخ بدء الدفعة
+  endDate          DateTime? // تاريخ انتهاء الدفعة
+  isEnrollmentOpen Boolean   @default(true) // هل التسجيل مفتوح؟
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  enrollments Enrollment[]
+  tracks      Track[]
 
   @@index([status, type])
 }
@@ -146,9 +144,90 @@ model ActivityNode {
   assignment  Assignment?
   progress    ProgressLog[]
   video       VideoAsset?
+  resource    NodeResource?
+  quiz        Quiz?
 
   @@index([moduleId, orderIndex])
   @@index([type])
+}
+
+// محتوى الدرس القرائي: رابط خارجي أو ملف مخزّن (مفتاح StorageService وليس رابطاً)
+model NodeResource {
+  id         String           @id @default(uuid())
+  nodeId     String           @unique
+  kind       NodeResourceKind
+  url        String? // kind = LINK
+  storageKey String?          @unique // kind = FILE
+  fileName   String?
+  mimeType   String?
+  sizeBytes  Int?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  node       ActivityNode     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+}
+
+// اختبار قصير مرتبط بدرس من نوع QUIZ
+model Quiz {
+  id                 String         @id @default(uuid())
+  nodeId             String         @unique
+  title              String
+  description        String?
+  passingScore       Decimal        @default(0) @db.Decimal(7, 2) // علامة النجاح
+  maxAttempts        Int? // null = غير محدود
+  showCorrectAnswers Boolean        @default(true) // إظهار الإجابات الصحيحة بعد التسليم
+  isPublished        Boolean        @default(false) // لا يراه الطلاب قبل النشر
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  node               ActivityNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  questions          QuizQuestion[]
+  attempts           QuizAttempt[]
+}
+
+model QuizQuestion {
+  id          String       @id @default(uuid())
+  quizId      String
+  text        String
+  explanation String? // يظهر للطالب بعد التسليم
+  points      Decimal      @default(1) @db.Decimal(6, 2) // وزن السؤال
+  orderIndex  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options     QuizOption[]
+
+  @@index([quizId, orderIndex])
+}
+
+// أربعة خيارات لكل سؤال، واحد منها صحيح. isCorrect لا يُرسل للطلاب أبداً
+model QuizOption {
+  id         String       @id @default(uuid())
+  questionId String
+  text       String
+  isCorrect  Boolean      @default(false)
+  orderIndex Int          @default(0)
+  question   QuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, orderIndex])
+}
+
+// محاولة طالب: الإجابات والنتيجة ونسخة ثابتة من التصحيح وقت التسليم
+model QuizAttempt {
+  id            String   @id @default(uuid())
+  quizId        String
+  studentId     String
+  attemptNumber Int // 1 للمحاولة الأولى لهذا الطالب
+  answers       Json // [{ questionId, optionId | null }]
+  result        Json // تصحيح كل سؤال كما كان وقت التسليم
+  score         Decimal  @db.Decimal(7, 2)
+  totalScore    Decimal  @db.Decimal(7, 2)
+  passingScore  Decimal  @db.Decimal(7, 2)
+  passed        Boolean
+  submittedAt   DateTime @default(now())
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student       User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, studentId, attemptNumber])
+  @@index([studentId, submittedAt])
 }
 
 model VideoAsset {
@@ -166,19 +245,19 @@ model VideoAsset {
 }
 
 model Assignment {
-  id           String         @id @default(uuid())
-  nodeId       String         @unique
+  id           String                 @id @default(uuid())
+  nodeId       String                 @unique
   instructions String
-  allowedType  SubmissionType @default(URL_LINK)
-  maxScore     Decimal        @default(100.00) @db.Decimal(5, 2)
+  allowedType  SubmissionType         @default(URL_LINK)
+  maxScore     Decimal                @default(100.00) @db.Decimal(5, 2)
   dueDate      DateTime?
-  status       AssignmentStatus       @default(DRAFT)   // جديد
-  publishedAt  DateTime?                                // تاريخ أول نشر
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  node         ActivityNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  status       AssignmentStatus       @default(DRAFT) // جديد
+  publishedAt  DateTime? // تاريخ أول نشر
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  node         ActivityNode           @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   submissions  Submission[]
-  attachments  AssignmentAttachment[]                   // جديد
+  attachments  AssignmentAttachment[] // جديد
 
   @@index([status])
 }
@@ -218,27 +297,25 @@ model Submission {
 //   @@index([programId])
 // }
 
-
 model Enrollment {
   id             String           @id @default(uuid())
   userId         String
   programId      String
   status         EnrollmentStatus @default(PENDING) // تبدأ كمعلقة لحين مراجعة الإيصال
   progressPct    Float            @default(0.0)
-  paymentReceipt String?          // رابط صورة إيصال التحويل المالي
+  paymentReceipt String? // مفتاح ملف إيصال التحويل في StorageService (وليس رابطاً)
+  reviewNote     String? // ملاحظة الإدارة عند القبول أو الرفض (تظهر للطالب)
+  reviewedAt     DateTime? // تاريخ آخر مراجعة من الإدارة
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
-  
-  program        Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
-  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, programId])
   @@index([userId])
-  @@index([programId])
+  @@index([programId, status])
 }
-
-
-
 
 model ProgressLog {
   id              String       @id @default(uuid())
@@ -273,12 +350,11 @@ model Notification {
   @@index([userId, createdAt])
 }
 
-
 model AssignmentAttachment {
   id           String     @id @default(uuid())
   assignmentId String
-  storageKey   String     @unique   // المسار الداخلي أو المفتاح
-  fileName     String                // الاسم الأصلي للملف للعرض والتحميل
+  storageKey   String     @unique // المسار الداخلي أو المفتاح
+  fileName     String // الاسم الأصلي للملف للعرض والتحميل
   mimeType     String
   sizeBytes    Int
   createdAt    DateTime   @default(now())
@@ -286,7 +362,6 @@ model AssignmentAttachment {
 
   @@index([assignmentId])
 }
-
 
 enum GlobalRole {
   SUPER_ADMIN
@@ -344,11 +419,17 @@ enum SubmissionStatus {
 }
 
 enum EnrollmentStatus {
-  PENDING
-  ACTIVE
-  COMPLETED
-  DROPPED
-  SUSPENDED
+  PENDING // طلب بانتظار مراجعة الإدارة
+  ACTIVE // مقبول، يصل إلى المحتوى
+  COMPLETED // أنهى البرنامج، يحتفظ بالوصول
+  DROPPED // انسحب أو أُخرج بعد القبول
+  SUSPENDED // موقوف مؤقتاً، يحتفظ بمقعده
+  REJECTED // رُفض الطلب، يمكنه إعادة التقديم
+}
+
+enum NodeResourceKind {
+  LINK
+  FILE
 }
 
 enum NotificationType {
@@ -358,10 +439,8 @@ enum NotificationType {
   ANNOUNCEMENT
 }
 
-
-
 enum AssignmentStatus {
-  DRAFT      // مخفي عن الطلاب
-  PUBLISHED  // مرئي للطلاب المسجلين
-  ARCHIVED   // مخفي ولكن البيانات محفوظة
+  DRAFT // مخفي عن الطلاب
+  PUBLISHED // مرئي للطلاب المسجلين
+  ARCHIVED // مخفي ولكن البيانات محفوظة
 }

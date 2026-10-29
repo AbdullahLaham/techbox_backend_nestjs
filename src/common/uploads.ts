@@ -1,29 +1,27 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { fileTypeFromBuffer } from 'file-type';
 import { extname } from 'node:path';
-import { AssignmentException } from './assignment-errors.js';
-import { ATTACHMENT_LIMITS } from '../types/assignments.admin.contract.js';
+import { ApiException } from './api-errors.js';
 
-/** Content types browsers really send for the allowed extensions. */
+/** Content types browsers and phones really send for the allowed extensions. */
 const DECLARED_MIME_ALIASES: Record<string, readonly string[]> = {
   '.zip': ['application/x-zip-compressed', 'application/x-zip'],
-  '.jpg': ['image/pjpeg'],
-  '.jpeg': ['image/pjpeg'],
+  '.jpg': ['image/pjpeg', 'image/jpg'],
+  '.jpeg': ['image/pjpeg', 'image/jpg'],
 };
 
 /** What `file-type` reports for each extension. `.txt` has no signature. */
 const MAGIC_EXT: Record<string, string> = {
   '.pdf': 'pdf',
+  // Word 97-2003 files are OLE compound files; file-type reports the container type.
+  '.doc': 'cfb',
   '.docx': 'docx',
   '.pptx': 'pptx',
   '.xlsx': 'xlsx',
   '.png': 'png',
   '.jpg': 'jpg',
   '.jpeg': 'jpg',
+  '.webp': 'webp',
   '.zip': 'zip',
 };
 
@@ -36,9 +34,12 @@ export type InspectedFile = {
   fileName: string;
 };
 
+const unsupported = (message = 'File type is not supported.') =>
+  new ApiException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, 'UNSUPPORTED_FILE_TYPE', message);
+
 /**
- * Display name (spec 7.2): no path, no control or bidi-override characters, at most
- * 200 characters, extension kept. Arabic is allowed.
+ * Display name: no path, no control or bidi-override characters, at most 200
+ * characters, extension kept. Arabic is allowed.
  */
 export function sanitizeFileName(originalName: string, ext: string): string {
   const base = originalName.split(/[\\/]/).pop() ?? '';
@@ -64,14 +65,16 @@ function isPlainText(buffer: Buffer): boolean {
 
 /**
  * Checks extension, declared MIME type and the real type from the magic bytes
- * (spec 7.1). Throws 415 UNSUPPORTED_FILE_TYPE on any mismatch.
+ * against `allowedTypes` (extension with dot -> canonical MIME type).
+ * Throws 415 UNSUPPORTED_FILE_TYPE on any mismatch.
  */
-export async function inspectUpload(file: Express.Multer.File): Promise<InspectedFile> {
+export async function inspectUpload(
+  file: Express.Multer.File,
+  allowedTypes: Readonly<Record<string, string>>,
+): Promise<InspectedFile> {
   const ext = extname(file.originalname).toLowerCase();
-  const mimeType = ATTACHMENT_LIMITS.allowedTypes[ext];
-  if (!mimeType) {
-    throw new AssignmentException('UNSUPPORTED_FILE_TYPE');
-  }
+  const mimeType = allowedTypes[ext];
+  if (!mimeType) throw unsupported();
 
   // Browsers fall back to octet-stream for types the OS does not know; the magic
   // bytes check below is what decides.
@@ -80,15 +83,11 @@ export async function inspectUpload(file: Express.Multer.File): Promise<Inspecte
     declared === mimeType ||
     declared === 'application/octet-stream' ||
     (DECLARED_MIME_ALIASES[ext] ?? []).includes(declared);
-  if (!declaredOk) {
-    throw new AssignmentException('UNSUPPORTED_FILE_TYPE');
-  }
+  if (!declaredOk) throw unsupported();
 
   const detected = await fileTypeFromBuffer(file.buffer);
   const contentOk = ext === '.txt' ? !detected && isPlainText(file.buffer) : detected?.ext === MAGIC_EXT[ext];
-  if (!contentOk) {
-    throw new AssignmentException('UNSUPPORTED_FILE_TYPE', 'File content does not match its type.');
-  }
+  if (!contentOk) throw unsupported('File content does not match its type.');
 
   return { ext, mimeType, fileName: sanitizeFileName(file.originalname, ext) };
 }
@@ -97,9 +96,9 @@ const UPLOADS_PER_WINDOW = 20;
 const WINDOW_MS = 60_000;
 
 /**
- * In-memory upload rate limit: 20 per minute per user (spec 7.1). Per process,
- * so with several instances the effective limit is multiplied; move it to Redis
- * (or @nestjs/throttler with a shared store) when the API scales out.
+ * In-memory upload rate limit: 20 per minute per user. Per process, so with several
+ * instances the effective limit is multiplied; move it to Redis (or @nestjs/throttler
+ * with a shared store) when the API scales out.
  */
 @Injectable()
 export class UploadRateLimitGuard implements CanActivate {
@@ -113,7 +112,7 @@ export class UploadRateLimitGuard implements CanActivate {
     const recent = (this.hits.get(userId) ?? []).filter((t) => now - t < WINDOW_MS);
     if (recent.length >= UPLOADS_PER_WINDOW) {
       this.hits.set(userId, recent);
-      throw new AssignmentException('TOO_MANY_REQUESTS');
+      throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'TOO_MANY_REQUESTS', 'Too many uploads; try again in a minute.');
     }
     recent.push(now);
     this.hits.set(userId, recent);

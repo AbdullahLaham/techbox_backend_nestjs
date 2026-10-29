@@ -6,7 +6,7 @@
  *   DATABASE_URL=postgresql://.../incubator_lms_test npx prisma migrate deploy
  *   DATABASE_URL=postgresql://.../incubator_lms_test npm run test:e2e -- assignments
  */
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import {
@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
+import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 import type { AssignmentItem } from '../src/types/assignments.contract.js';
 
@@ -86,7 +87,7 @@ describe.skipIf(!dbName.endsWith('_test'))('Assignments (e2e, ASSIGNMENTS_SPEC.m
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
     jwt = app.get(JwtService);

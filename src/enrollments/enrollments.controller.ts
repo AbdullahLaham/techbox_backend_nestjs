@@ -1,67 +1,59 @@
-import { 
-  Controller, 
-  Post, 
-  Get, 
-  Param, 
-  Body, 
-  UploadedFile, 
-  UseGuards, 
-  Req, 
-  UseInterceptors, 
-  BadRequestException 
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UploadedFile,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { EnrollmentsService } from './enrollments.service.js';
 import { EnrollDto } from './dto/enroll.dto.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
-import { RolesGuard } from '../auth/guards/roles.guard.js';
-import { Roles } from '../auth/decorators/roles.decorator.js';
-import { GlobalRole } from '@prisma/client';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { ApiExceptionFilter } from '../common/api-errors.js';
+import { PrivateCacheInterceptor } from '../common/private-cache.interceptor.js';
+import { UploadRateLimitGuard } from '../common/uploads.js';
+import { ENROLLMENT_RECEIPT_LIMITS } from '../types/api.contract.js';
 
-@Controller('enrollments')
+/**
+ * Student enrollment API (api.contract.ts, "Enrollments (student)").
+ * `/enrollments` is kept for app versions already installed; new clients use `/v1/enrollments`.
+ */
+@Controller(['v1/enrollments', 'enrollments'])
+@UseGuards(JwtAuthGuard)
+@UseFilters(ApiExceptionFilter)
+@UseInterceptors(PrivateCacheInterceptor)
 export class EnrollmentsController {
   constructor(private readonly enrollmentsService: EnrollmentsService) {}
 
-  // التسجيل في برنامج أو دفعة مع رفع إيصال الدفع والبيانات الشخصية
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(GlobalRole.STUDENT, GlobalRole.SUPER_ADMIN)
+  /** Apply (or apply again after REJECTED / DROPPED) with the personal data and an optional receipt. */
   @Post(':programId')
+  @UseGuards(UploadRateLimitGuard)
   @UseInterceptors(
     FileInterceptor('receipt', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, callback) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          callback(null, `receipt-${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
-      limits: { fileSize: 5 * 1024 * 1024 }, // الحد الأقصى 5 ميجابايت
-      fileFilter: (req, file, callback) => {
-        if (!file.mimetype.match(/\/(jpg|jpeg|png|pdf)$/)) {
-          return callback(new BadRequestException('يسمح فقط برفع صور (JPG, PNG) أو ملفات PDF'), false);
-        }
-        callback(null, true);
-      },
-    }),
+      storage: memoryStorage(),
+      limits: { fileSize: ENROLLMENT_RECEIPT_LIMITS.maxBytes, files: 1 },
+      // Phones and browsers send UTF-8 file names; Multer's default (latin1) garbles them.
+      defParamCharset: 'utf8',
+    } as Parameters<typeof FileInterceptor>[1]),
   )
-  async enroll(
+  enroll(
     @Param('programId') programId: string,
     @Req() req: any,
     @Body() dto: EnrollDto,
     @UploadedFile() receipt?: Express.Multer.File,
   ) {
-    const userId = req.user.userId || req.user.sub || req.user.id;
-    return this.enrollmentsService.enrollStudent(userId, programId, dto, receipt);
+    return this.enrollmentsService.apply(req.user.id, programId, dto, receipt);
   }
 
-  // جلب دورات الطالب الحالية
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(GlobalRole.STUDENT, GlobalRole.SUPER_ADMIN)
+  /** The caller's own applications and enrollments, newest first. */
   @Get('my-enrollments')
-  async getMyEnrollments(@Req() req: any) {
-    const userId = req.user.userId;
-    return this.enrollmentsService.getStudentEnrollments(userId);
+  myEnrollments(@Req() req: any) {
+    return this.enrollmentsService.myEnrollments(req.user.id);
   }
 }

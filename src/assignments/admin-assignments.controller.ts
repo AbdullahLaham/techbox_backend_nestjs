@@ -22,10 +22,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { AdminAssignmentsService } from './admin-assignments.service.js';
-import { AssignmentExceptionFilter } from './assignment-errors.js';
+import { ApiExceptionFilter } from '../common/api-errors.js';
 import { parseCreateBody, parseListQuery, parseStatusBody, parseUpdateBody } from './assignment-validation.js';
-import { UploadRateLimitGuard } from './attachment-file.js';
-import { PrivateCacheInterceptor } from './private-cache.interceptor.js';
+import { UploadRateLimitGuard } from '../common/uploads.js';
+import { PrivateCacheInterceptor } from '../common/private-cache.interceptor.js';
 import { ASSIGNMENT_MANAGER_ROLES, ATTACHMENT_LIMITS } from '../types/assignments.admin.contract.js';
 
 /**
@@ -35,7 +35,7 @@ import { ASSIGNMENT_MANAGER_ROLES, ATTACHMENT_LIMITS } from '../types/assignment
 @Controller('v1/admin/assignments')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...(ASSIGNMENT_MANAGER_ROLES as readonly GlobalRole[]))
-@UseFilters(AssignmentExceptionFilter)
+@UseFilters(ApiExceptionFilter)
 @UseInterceptors(PrivateCacheInterceptor)
 export class AdminAssignmentsController {
   constructor(private readonly assignments: AdminAssignmentsService) {}

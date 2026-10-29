@@ -9,6 +9,9 @@ import { ProgramsModule } from './programs/programs.module.js';
 import { EnrollmentsModule } from './enrollments/enrollments.module.js';
 // تم حذف استيراد الـ AssignmentsController المباشر من هنا
 import { AssignmentsModule } from './assignments/assignments.module.js';
+import { NodesModule } from './nodes/nodes.module.js';
+import { QuizzesModule } from './quizzes/quizzes.module.js';
+import { SubmissionsModule } from './submissions/submissions.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
@@ -22,6 +25,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     ProgramsModule,
     EnrollmentsModule,
     AssignmentsModule, // <--- الموديول كفيل بتسجيل الكنترولر والخدمة الخاصة به
+    NodesModule,
+    QuizzesModule,
+    SubmissionsModule,
   ],
   controllers: [AppController], // <--- اترك فقط الـ AppController هنا
   providers: [AppService],

@@ -1,370 +1,173 @@
-// import { Injectable, NotFoundException } from '@nestjs/common';
-// import { PrismaService } from '../prisma/prisma.service.js';
-// import { CreateProgramDto } from './dto/create-program.dto.js';
-// import { CreateTrackDto } from './dto/create-track.dto.js';
-// import { CreateModuleDto } from './dto/create-module.dto.js';
-// import { CreateNodeDto } from './dto/create-node.dto.js';
-
-// @Injectable()
-// export class ProgramsService {
-//   constructor(private readonly prisma: PrismaService) {}
-
-//   // 1. جلب جميع البرامج
-//   async findAll(includeDrafts = false) {
-//     return this.prisma.program.findMany({
-//       where: includeDrafts ? {} : { status: 'PUBLISHED' },
-//       include: {
-//         _count: {
-//           select: { enrollments: true, tracks: true },
-//         },
-//       },
-//       orderBy: { createdAt: 'desc' },
-//     });
-//   }
-
-//   // 2. جلب برنامج مع هيكله الكامل (Tracks -> Modules -> Nodes -> Video/Assignment)
-//   async findOneWithStructure(slug: string) {
-//     const program = await this.prisma.program.findUnique({
-//       where: { slug },
-//       include: {
-//         tracks: {
-//           orderBy: { orderIndex: 'asc' },
-//           include: {
-//             modules: {
-//               orderBy: { orderIndex: 'asc' },
-//               include: {
-//                 nodes: {
-//                   orderBy: { orderIndex: 'asc' },
-//                   include: {
-//                     video: true,
-//                     assignment: true,
-//                   },
-//                 },
-//               },
-//             },
-//           },
-//         },
-//       },
-//     });
-
-//     if (!program) {
-//       throw new NotFoundException(`البرنامج برمز ${slug} غير موجود`);
-//     }
-
-//     return program;
-//   }
-
-//   // 3. إنشاء برنامج جديد
-//   async create(dto: CreateProgramDto) {
-//     return this.prisma.program.create({
-//       data: dto,
-//     });
-//   }
-
-//   // 4. إضافة مسار (Track) للبرنامج
-//   async createTrack(programId: string, dto: CreateTrackDto) {
-//     const program = await this.prisma.program.findUnique({ where: { id: programId } });
-//     if (!program) throw new NotFoundException('البرنامج غير موجود');
-
-//     return this.prisma.track.create({
-//       data: { ...dto, programId },
-//     });
-//   }
-
-//   // 5. إضافة وحدة (Module) للمسار
-//   async createModule(trackId: string, dto: CreateModuleDto) {
-//     const track = await this.prisma.track.findUnique({ where: { id: trackId } });
-//     if (!track) throw new NotFoundException('المسار غير موجود');
-
-//     return this.prisma.module.create({
-//       data: { ...dto, trackId },
-//     });
-//   }
-
-//   // 6. إضافة عقد نشاط (ActivityNode) مع دعم الفيديو أو الواجب
-//   async createNode(moduleId: string, dto: CreateNodeDto) {
-//     const module = await this.prisma.module.findUnique({ where: { id: moduleId } });
-//     if (!module) throw new NotFoundException('الوحدة غير موجودة');
-
-//     const { videoData, assignmentData, ...nodeData } = dto;
-
-//     return this.prisma.$transaction(async (tx) => {
-//       const node = await tx.activityNode.create({
-//         data: { ...nodeData, moduleId },
-//       });
-
-//       if (node.type === 'VIDEO_LECTURE' && videoData) {
-//         await tx.videoAsset.create({
-//           data: {
-//             nodeId: node.id,
-//             externalId: videoData.externalId,
-//             durationSec: videoData.durationSec,
-//             playbackUrl: videoData.playbackUrl,
-//             transcodeState: 'READY',
-//           },
-//         });
-//       }
-
-//       if (node.type === 'ASSIGNMENT' && assignmentData) {
-//         await tx.assignment.create({
-//           data: {
-//             nodeId: node.id,
-//             instructions: assignmentData.instructions,
-//             allowedType: assignmentData.allowedType || 'URL_LINK',
-//             maxScore: assignmentData.maxScore || 100,
-//             dueDate: assignmentData.dueDate ? new Date(assignmentData.dueDate) : undefined,
-//           },
-//         });
-//       }
-
-//       return node;
-//     });
-//   }
-// }
-
-
-
-
-
-
-
-
-
-
-
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { AssignmentStatus, NodeType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { CreateProgramDto } from './dto/create-program.dto.js';
-import { UpdateProgramDto } from './dto/update-program.dto.js';
-import { CreateTrackDto } from './dto/create-track.dto.js';
-import { UpdateTrackDto } from './dto/update-track.dto.js';
-import { CreateModuleDto } from './dto/create-module.dto.js';
-import { UpdateModuleDto } from './dto/update-module.dto.js';
-import { CreateNodeDto } from './dto/create-node.dto.js';
-import { UpdateNodeDto } from './dto/update-node.dto.js';
+import { apiError } from '../common/api-errors.js';
+import {
+  canAccessContent,
+  type ProgramDetail,
+  type ProgramNode,
+  type ProgramSummary,
+} from '../types/api.contract.js';
+import {
+  CATALOG_STATUSES,
+  MY_ENROLLMENT_SELECT,
+  PROGRAM_SELECT,
+  PUBLIC_DETAIL_STATUSES,
+  enrollmentCountsByProgram,
+  isStaff,
+  toMyEnrollmentRef,
+  toProgramSummary,
+  type Viewer,
+} from './program-mapping.js';
 
-@Injectable()
-export class ProgramsService {
-  constructor(private readonly prisma: PrismaService) {}
+const byOrder = [{ orderIndex: 'asc' as const }, { createdAt: 'asc' as const }];
 
-  // ==================== 1. PROGRAMS CRUD ====================
-
-  async findAll(includeDrafts = false) {
-    return this.prisma.program.findMany({
-      where: includeDrafts ? {} : { status: 'PUBLISHED' },
-      include: {
-        _count: {
-          select: { enrollments: true, tracks: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async findOneWithStructure(slug: string, userId?: string) {
-    const program = await this.prisma.program.findUnique({
-      where: { slug },
-      include: {
-        // جلب تسجيلات البرنامج (يمكن فلترتها بناءً على المستخدم إن وُجد)
-        enrollments: userId ? {
-          where: { userId },
-        } : true,
-        tracks: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            modules: {
-              orderBy: { orderIndex: 'asc' },
-              include: {
-                nodes: {
-                  orderBy: { orderIndex: 'asc' },
-                  include: {
-                    video: true,
-                    assignment: true,
-                  },
+const PUBLIC_CURRICULUM_SELECT = {
+  tracks: {
+    orderBy: byOrder,
+    select: {
+      id: true,
+      programId: true,
+      title: true,
+      description: true,
+      orderIndex: true,
+      modules: {
+        orderBy: byOrder,
+        select: {
+          id: true,
+          trackId: true,
+          title: true,
+          description: true,
+          orderIndex: true,
+          nodes: {
+            orderBy: byOrder,
+            select: {
+              id: true,
+              moduleId: true,
+              title: true,
+              description: true,
+              type: true,
+              orderIndex: true,
+              isMandatory: true,
+              video: { select: { durationSec: true, playbackUrl: true } },
+              quiz: { select: { isPublished: true } },
+              assignment: {
+                select: {
+                  id: true,
+                  status: true,
+                  allowedType: true,
+                  maxScore: true,
+                  dueDate: true,
+                  instructions: true,
                 },
               },
             },
           },
         },
       },
-    });
+    },
+  },
+} satisfies Prisma.ProgramSelect;
 
-    if (!program) {
-      throw new NotFoundException(`البرنامج برمز ${slug} غير موجود`);
+type NodeRow = Prisma.ActivityNodeGetPayload<{
+  select: (typeof PUBLIC_CURRICULUM_SELECT)['tracks']['select']['modules']['select']['nodes']['select'];
+}>;
+
+/** Public catalog and program detail (GET /v1/programs, GET /v1/programs/:slug). */
+@Injectable()
+export class ProgramsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async catalog(): Promise<ProgramSummary[]> {
+    const rows = await this.prisma.program.findMany({
+      where: { status: { in: CATALOG_STATUSES } },
+      select: PROGRAM_SELECT,
+      orderBy: { createdAt: 'desc' },
+    });
+    const counts = await enrollmentCountsByProgram(this.prisma, rows.map((r) => r.id));
+    return rows.map((row) => toProgramSummary(row, counts.get(row.id)));
+  }
+
+  async detail(slug: string, viewer?: Viewer): Promise<ProgramDetail> {
+    const row = await this.prisma.program.findUnique({
+      where: { slug },
+      select: { ...PROGRAM_SELECT, ...PUBLIC_CURRICULUM_SELECT },
+    });
+    // Drafts and archived programs do not exist for the public (404, not 403).
+    if (!row || (!PUBLIC_DETAIL_STATUSES.includes(row.status) && !isStaff(viewer))) {
+      throw apiError('NOT_FOUND', 'Program not found.');
     }
 
-    return program;
+    const [counts, enrollment] = await Promise.all([
+      enrollmentCountsByProgram(this.prisma, [row.id]),
+      viewer
+        ? this.prisma.enrollment.findUnique({
+            where: { userId_programId: { userId: viewer.id, programId: row.id } },
+            select: MY_ENROLLMENT_SELECT,
+          })
+        : null,
+    ]);
+
+    const myEnrollment = enrollment ? toMyEnrollmentRef(enrollment) : null;
+    const unlocked = isStaff(viewer) || canAccessContent(myEnrollment?.status);
+
+    return {
+      ...toProgramSummary(row, counts.get(row.id)),
+      tracks: row.tracks.map((track) => ({
+        id: track.id,
+        programId: track.programId,
+        title: track.title,
+        description: track.description,
+        orderIndex: track.orderIndex,
+        modules: track.modules.map((module) => ({
+          id: module.id,
+          trackId: module.trackId,
+          title: module.title,
+          description: module.description,
+          orderIndex: module.orderIndex,
+          nodes: module.nodes.flatMap((node) => toPublicNode(node, unlocked) ?? []),
+        })),
+      })),
+      myEnrollment,
+      enrollments: myEnrollment ? [myEnrollment] : [],
+      canAccessContent: unlocked,
+    };
   }
+}
 
-  async create(dto: CreateProgramDto) {
-    return this.prisma.program.create({ data: dto });
+/**
+ * Locked lessons keep their outline (title, type, duration) but not the content.
+ * Assignment lessons appear only once their assignment is PUBLISHED, like the
+ * assignments API; an ASSIGNMENT lesson without an assignment row is skipped.
+ */
+function toPublicNode(node: NodeRow, unlocked: boolean): ProgramNode | null {
+  if (node.type === NodeType.ASSIGNMENT && node.assignment?.status !== AssignmentStatus.PUBLISHED) {
+    return null;
   }
-
-  async updateProgram(id: string, dto: UpdateProgramDto) {
-    const program = await this.prisma.program.findUnique({ where: { id } });
-    if (!program) throw new NotFoundException('البرنامج غير موجود');
-
-    return this.prisma.program.update({
-      where: { id },
-      data: dto,
-    });
+  // Same for quizzes: a QUIZ lesson appears once its quiz is published (GET /v1/nodes/:id then has it).
+  if (node.type === NodeType.QUIZ && !node.quiz?.isPublished) {
+    return null;
   }
-
-  async removeProgram(id: string) {
-    const program = await this.prisma.program.findUnique({ where: { id } });
-    if (!program) throw new NotFoundException('البرنامج غير موجود');
-
-    return this.prisma.program.delete({ where: { id } });
-  }
-
-  // ==================== 2. TRACKS CRUD ====================
-
-  async createTrack(programId: string, dto: CreateTrackDto) {
-    const program = await this.prisma.program.findUnique({ where: { id: programId } });
-    if (!program) throw new NotFoundException('البرنامج غير موجود');
-
-    return this.prisma.track.create({
-      data: { ...dto, programId },
-    });
-  }
-
-  async updateTrack(trackId: string, dto: UpdateTrackDto) {
-    const track = await this.prisma.track.findUnique({ where: { id: trackId } });
-    if (!track) throw new NotFoundException('المسار غير موجود');
-
-    return this.prisma.track.update({
-      where: { id: trackId },
-      data: dto,
-    });
-  }
-
-  async removeTrack(trackId: string) {
-    const track = await this.prisma.track.findUnique({ where: { id: trackId } });
-    if (!track) throw new NotFoundException('المسار غير موجود');
-
-    return this.prisma.track.delete({ where: { id: trackId } });
-  }
-
-  // ==================== 3. MODULES CRUD ====================
-
-  async createModule(trackId: string, dto: CreateModuleDto) {
-    const track = await this.prisma.track.findUnique({ where: { id: trackId } });
-    if (!track) throw new NotFoundException('المسار غير موجود');
-
-    return this.prisma.module.create({
-      data: { ...dto, trackId },
-    });
-  }
-
-  async updateModule(moduleId: string, dto: UpdateModuleDto) {
-    const module = await this.prisma.module.findUnique({ where: { id: moduleId } });
-    if (!module) throw new NotFoundException('الوحدة غير موجودة');
-
-    return this.prisma.module.update({
-      where: { id: moduleId },
-      data: dto,
-    });
-  }
-
-  async removeModule(moduleId: string) {
-    const module = await this.prisma.module.findUnique({ where: { id: moduleId } });
-    if (!module) throw new NotFoundException('الوحدة غير موجودة');
-
-    return this.prisma.module.delete({ where: { id: moduleId } });
-  }
-
-  // ==================== 4. ACTIVITY NODES CRUD ====================
-
-  async createNode(moduleId: string, dto: CreateNodeDto) {
-    const module = await this.prisma.module.findUnique({ where: { id: moduleId } });
-    if (!module) throw new NotFoundException('الوحدة غير موجودة');
-
-    const { videoData, assignmentData, ...nodeData } = dto;
-
-    return this.prisma.$transaction(async (tx) => {
-      const node = await tx.activityNode.create({
-        data: { ...nodeData, moduleId },
-      });
-
-      if (node.type === 'VIDEO_LECTURE' && videoData) {
-        await tx.videoAsset.create({
-          data: {
-            nodeId: node.id,
-            externalId: videoData.externalId,
-            durationSec: videoData.durationSec,
-            playbackUrl: videoData.playbackUrl,
-            transcodeState: 'READY',
-          },
-        });
-      }
-
-      if (node.type === 'ASSIGNMENT' && assignmentData) {
-        await tx.assignment.create({
-          data: {
-            nodeId: node.id,
-            instructions: assignmentData.instructions,
-            allowedType: assignmentData.allowedType || 'URL_LINK',
-            maxScore: assignmentData.maxScore || 100,
-            dueDate: assignmentData.dueDate ? new Date(assignmentData.dueDate) : undefined,
-          },
-        });
-      }
-
-      return node;
-    });
-  }
-
-  async updateNode(nodeId: string, dto: UpdateNodeDto) {
-    const node = await this.prisma.activityNode.findUnique({ where: { id: nodeId } });
-    if (!node) throw new NotFoundException('العقد أو الدرس غير موجود');
-
-    const { videoData, assignmentData, ...nodeData } = dto;
-
-    return this.prisma.$transaction(async (tx) => {
-      // تحديث بيانات العقد الأساسية
-      const updatedNode = await tx.activityNode.update({
-        where: { id: nodeId },
-        data: nodeData,
-      });
-
-      // تحديث تفاصيل الفيديو إذا وجدت
-      if (videoData) {
-        await tx.videoAsset.upsert({
-          where: { nodeId },
-          update: videoData,
-          create: {
-            nodeId,
-            externalId: videoData.externalId || '',
-            durationSec: videoData.durationSec || 0,
-            playbackUrl: videoData.playbackUrl || '',
-          },
-        });
-      }
-
-      // تحديث تفاصيل الواجب إذا وجدت
-      if (assignmentData) {
-        await tx.assignment.upsert({
-          where: { nodeId },
-          update: {
-            ...assignmentData,
-            dueDate: assignmentData.dueDate ? new Date(assignmentData.dueDate) : undefined,
-          },
-          create: {
-            nodeId,
-            instructions: assignmentData.instructions || '',
-            maxScore: assignmentData.maxScore || 100,
-          },
-        });
-      }
-
-      return updatedNode;
-    });
-  }
-
-  async removeNode(nodeId: string) {
-    const node = await this.prisma.activityNode.findUnique({ where: { id: nodeId } });
-    if (!node) throw new NotFoundException('العقد أو الدرس غير موجود');
-
-    return this.prisma.activityNode.delete({ where: { id: nodeId } });
-  }
+  return {
+    id: node.id,
+    moduleId: node.moduleId,
+    title: node.title,
+    description: node.description,
+    type: node.type,
+    orderIndex: node.orderIndex,
+    isMandatory: node.isMandatory,
+    isLocked: !unlocked,
+    video: node.video
+      ? { durationSec: node.video.durationSec, playbackUrl: unlocked ? node.video.playbackUrl : null }
+      : null,
+    assignment: node.assignment
+      ? {
+          id: node.assignment.id,
+          allowedType: node.assignment.allowedType,
+          maxScore: node.assignment.maxScore.toNumber(),
+          dueDate: node.assignment.dueDate?.toISOString() ?? null,
+          instructions: unlocked ? node.assignment.instructions : null,
+        }
+      : null,
+  };
 }

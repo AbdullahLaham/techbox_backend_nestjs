@@ -16,7 +16,7 @@ import type { AssignmentDetail } from '../types/assignments.admin.contract.js';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Section 4.2: published assignment, visible program, ACTIVE or COMPLETED enrollment. */
-function visibleTo(userId: string): Prisma.AssignmentWhereInput {
+export function visibleTo(userId: string): Prisma.AssignmentWhereInput {
   return {
     status: AssignmentStatus.PUBLISHED,
     node: {

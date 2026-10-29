@@ -16,7 +16,7 @@ import {
   type CreateAssignmentInput,
   type UpdateAssignmentInput,
 } from './assignment-validation.js';
-import { inspectUpload } from './attachment-file.js';
+import { inspectUpload } from '../common/uploads.js';
 import {
   ASSIGNMENT_STATUS_TRANSITIONS,
   ATTACHMENT_LIMITS,
@@ -113,6 +113,7 @@ export class AdminAssignmentsService {
           create: {
             moduleId: input.moduleId,
             title: input.title,
+            description: input.description,
             type: NodeType.ASSIGNMENT,
             isMandatory: input.isMandatory,
             orderIndex,
@@ -205,6 +206,7 @@ export class AdminAssignmentsService {
 
     const nodeData: Prisma.ActivityNodeUpdateWithoutAssignmentInput = {
       title: input.title,
+      description: input.description,
       isMandatory: input.isMandatory,
       orderIndex: input.orderIndex,
     };
@@ -314,7 +316,7 @@ export class AdminAssignmentsService {
       throw validationFailed({ file: 'Send one file in the "file" field.' });
     }
 
-    const { ext, mimeType, fileName } = await inspectUpload(file);
+    const { ext, mimeType, fileName } = await inspectUpload(file, ATTACHMENT_LIMITS.allowedTypes);
     const attachmentId = randomUUID();
     const storageKey = `assignments/${id}/${attachmentId}${ext}`;
 
