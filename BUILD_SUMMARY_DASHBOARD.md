@@ -2,7 +2,7 @@
 
 Short guide for the `techbox_dashboard` team: what the backend now offers, what the web app already uses, and what is left to build. Full endpoint and payload details: **`api-contract-admin.md`**. Types: `types/*.contract.ts` (copied from the backend's `src/types/`; re-copy, never edit).
 
-Status: 2026-10-28. Backend: 44 end-to-end tests passing.
+Status: 2026-10-29. Backend: 52 end-to-end tests passing. Change log per update: `docs/updates/`.
 
 ## 1. What the backend provides
 
@@ -24,58 +24,37 @@ All `/v1` errors share one shape: `{ statusCode, code, message, details? }`. `li
 | Screen | Uses |
 |--------|------|
 | `/admin/content` and `/admin/content/[slug]` | Admin programs API, curriculum API, lessons API |
-| `/admin/lessons/...` (lesson editor, quiz questions and settings, attempts) | Lessons and quizzes APIs (`services/nodes-admin-service.ts`) |
+| `/admin/lessons/...` (lesson editor, reading file, quiz questions and settings, attempts) | Lessons and quizzes APIs (`services/nodes-admin-service.ts`) |
 | `/admin/enrollments` | Enrollment review API (tabs with counts, receipt preview, accept/reject with note) |
 | `/admin/assignments` (list, new, edit, attachments) | Assignments API (`services/assignments-admin-service.ts`) |
+| `/admin/grading`, `/admin/grading/[id]` | Submissions review queue, submission review, grade form (`services/submissions-service.ts`) |
 | `/programs`, `/programs/[slug]` | Catalog, program detail with lock state, apply dialog |
-| `/assignments`, `/assignments/[id]` | Learner list and detail (read-only) |
+| `/assignments`, `/assignments/[id]` | Learner list and detail, hand-in panel (`components/submissions/student/hand-in-panel.tsx`) |
 
 ## 3. Left to build
 
-### 3.1 Grading page (`/admin/grading`, now a "coming soon" placeholder)
-
-Who: `SUPER_ADMIN`, `INCUBATOR_MANAGER`, `INSTRUCTOR` (`SUBMISSION_REVIEWER_ROLES`). Note the route rule in `lib/auth/rbac.ts` currently allows all staff on `/admin/grading`; tighten it to these roles (mentors get `403` from the API).
+### 3.1 Lesson progress (new API, docs/updates/01-program-progress.md)
 
 | Part | Call |
 |------|------|
-| Pick an assignment | `GET /v1/admin/assignments` (`pendingReviewCount` per row shows where work is waiting) |
-| Review queue with status tabs | `GET /v1/admin/assignments/:id/submissions?status=&latestOnly=true&q=&page=` → `items` + `statusCounts` |
-| Open a hand-in | `GET /v1/admin/submissions/:submissionId` → `content.text`, `content.links`, `content.files[].url` (signed, ~1 h), `isLate`, `attemptNumber` |
-| Previous attempts of a student | Same list with `latestOnly=false&q=<email>` |
-| Grade | `PATCH /v1/admin/submissions/:id/grade` with `{ status, score?, feedback? }` |
+| Video lesson in `/programs/[slug]` | `POST /v1/nodes/:nodeId/progress` with `{ positionSec }` about every 15 s and on pause/leave; resume from `GET /v1/nodes/:nodeId` → `progress.lastPositionSec` |
+| Reading lesson | A "تم الانتهاء" button → `{ completed: true }` |
+| Curriculum ticks | `ProgramNode.isCompleted` from `GET /v1/programs/:slug` |
+| Progress bar | `myEnrollment.progressPct`, `completedLessons / totalLessons`; learner dashboard from `GET /v1/enrollments/my-enrollments` (replace the mock in `services/dashboard-service.ts`) |
+| Admin enrollments table | Show `completedLessons / totalLessons` per learner |
 
-Grading rules to reflect in the form:
-
-| Action | Body | Notes |
-|--------|------|-------|
-| Start reviewing | `{ "status": "UNDER_REVIEW" }` | Optional; shows the student it is being looked at |
-| Grade | `{ "status": "GRADED", "score": 85.5, "feedback": "…" }` | Score required, 0 to `maxScore`, 2 decimals |
-| Ask for changes | `{ "status": "NEEDS_REVISION", "feedback": "…" }` | The student can hand in a new attempt |
-| Reject | `{ "status": "REJECTED", "feedback": "…" }` | Final; no new attempt |
-
-Grading notifies the student, records the grader, and (for GRADED) completes the lesson in the student's progress. The quick-action card "قائمة التقييم" and the admin overview's grading preview can then read real data instead of mocks.
-
-### 3.2 Hand-in on the learner assignment page (`/assignments/[id]`)
+### 3.2 Notification bell (new API, docs/updates/02-notifications.md)
 
 | Part | Call |
 |------|------|
-| Current state | `GET /v1/assignments/:id/my-submission` → `latest`, `attempts`, `canSubmit`, `submitBlockReason` |
-| Hand in | `POST /v1/assignments/:id/submit`: JSON `{ text?, links? }`, or multipart with `files` (repeat), `text`, `links` (repeat) |
+| Badge in the header | `GET /v1/notifications/unread-count` (on load and focus) |
+| Dropdown or page | `GET /v1/notifications?page=&unreadOnly=` |
+| Open one | `PATCH /v1/notifications/:id/read`, then route `actionUrl` (`/assignments/<id>` → `/assignments/[id]`, `/programs/<slug>` → `/programs/[slug]`) |
+| Mark all read | `POST /v1/notifications/read-all` |
 
-Form per `allowedType` (`SUBMISSION_RULES` in `submissions.contract.ts`):
+### 3.3 Still mocked
 
-| `allowedType` | Inputs |
-|---------------|--------|
-| `FILE_UPLOAD` | 1–5 files (pdf, doc, docx, png, jpg, webp; ≤ 20 MB each) + optional note |
-| `URL_LINK` | 1 link + optional note |
-| `TEXT_CONTENT` | Text answer (≤ 20,000) |
-| `MULTIMEDIA` | Up to 5 links and/or up to 5 files (at least one) + optional note |
-
-- Show the form only when `canSubmit`; otherwise explain `submitBlockReason` (awaiting review / graded / rejected).
-- After a `NEEDS_REVISION`, the form appears again; the new hand-in is attempt 2, 3, …
-- Late hand-ins are accepted and shown as `isLate`.
-- Upload straight from the browser (FormData, `Content-Type: multipart/form-data`, `timeout: 0`, progress via `onUploadProgress`).
-- After success, invalidate the assignment list and `my-submission` queries.
+The admin and learner overviews (`services/dashboard-service.ts`) serve fixtures; the backend has no `/dashboard/*` aggregate endpoints yet.
 
 ## 4. Rules worth knowing (what the API will refuse)
 

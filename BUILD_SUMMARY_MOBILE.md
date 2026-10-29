@@ -2,7 +2,7 @@
 
 Short guide for the `teckbox_lms_app` team: what the backend now offers learners, what the app already uses, and what is left to build. Full endpoint and payload details: **`api-contract-mobile.md`**. Types: `src/types/*.contract.ts` (copied from the backend's `src/types/`; re-copy, never edit).
 
-Status: 2026-10-28. Backend: 44 end-to-end tests passing.
+Status: 2026-10-29. Backend: 52 end-to-end tests passing. Change log per update: `docs/updates/`.
 
 ## 1. What the backend provides
 
@@ -25,61 +25,34 @@ Errors on `/v1` routes: `{ statusCode, code, message, details? }`. `src/api/erro
 |--------|------|
 | Courses tab, `course/[slug]` | Catalog, program detail with `myEnrollment` / `canAccessContent` |
 | `enrollments/[programId]` | Apply (multipart with receipt) |
-| Assignments tab, `assignment/[assignmentId]` | List and detail (read-only) |
-| `lesson/[nodeId]` | Lesson content |
+| Assignments tab, `assignment/[assignmentId]` | List, detail, hand-in form and submission history (`SubmissionForm`, `SubmissionSection`, `src/api/submissions.ts`) |
+| `lesson/[nodeId]` | Lesson content (video, reading) |
 | `quiz/[quizId]`, `quiz/attempt/[attemptId]` | Taking a quiz and its result |
+| Session | Login with refresh tokens kept in secure storage |
 
 ## 3. Left to build
 
-### 3.1 Hand-in on the assignment screen (`assignment/[assignmentId]`)
+### 3.1 Lesson progress (new API, docs/updates/01-program-progress.md)
 
-| Step | Call |
+| Part | Call |
 |------|------|
-| Load state | `GET /v1/assignments/:id/my-submission` → `latest`, `attempts`, `canSubmit`, `submitBlockReason`, `allowedType`, `maxScore`, `dueDate` |
-| Submit | `POST /v1/assignments/:id/submit` (`SUBMISSIONS_ENDPOINTS.submit(id)`) |
-| Afterwards | Refetch `my-submission` and the assignments list |
+| Video player in `lesson/[nodeId]` | `POST /v1/nodes/:nodeId/progress` with `{ "positionSec": n }` about every 15 s, on pause and when leaving; start playback at `progress.lastPositionSec` from `GET /v1/nodes/:nodeId` |
+| Reading lesson | A "تم الانتهاء" button → `{ "completed": true }` |
+| Program screen | Tick lessons with `isCompleted`; progress bar from `myEnrollment.progressPct` and `completedLessons / totalLessons` |
+| Home | Progress per program from `GET /v1/enrollments/my-enrollments` |
 
-What to show per `allowedType` (`SUBMISSION_RULES` in `submissions.contract.ts`):
+The response's `programProgress` already holds the new program percentage, so the screen can update without refetching.
 
-| `allowedType` | Inputs | Send as |
-|---------------|--------|---------|
-| `FILE_UPLOAD` | 1–5 files: pdf, doc, docx, png, jpg, webp; ≤ 20 MB each (document picker + image picker) + optional note | multipart: `files` repeated, `text` |
-| `URL_LINK` | 1 link (http/https) + optional note | JSON `{ "links": ["…"], "text": "…" }` |
-| `TEXT_CONTENT` | Text answer, up to 20,000 characters | JSON `{ "text": "…" }` |
-| `MULTIMEDIA` | Up to 5 links and/or up to 5 files, at least one + optional note | JSON, or multipart if there are files (`links` repeated) |
+### 3.2 Notifications tab (new API, docs/updates/02-notifications.md)
 
-Multipart from Expo:
+| Part | Call |
+|------|------|
+| Tab badge | `GET /v1/notifications/unread-count` on app focus |
+| List (pull to refresh, infinite scroll) | `GET /v1/notifications?page=&pageSize=20` |
+| Tap an item | `PATCH /v1/notifications/:id/read`, then open `actionUrl`: `/assignments/<id>` → `assignment/[assignmentId]`, `/programs/<slug>` → `course/[slug]` |
+| "تعليم الكل كمقروء" | `POST /v1/notifications/read-all` |
 
-```ts
-const form = new FormData();
-if (note) form.append('text', note);
-links.forEach((l) => form.append('links', l));
-files.forEach((f) => form.append('files', { uri: f.uri, name: f.name, type: f.mimeType } as any));
-await apiClient.post(SUBMISSIONS_ENDPOINTS.submit(id), form, {
-  headers: { 'Content-Type': 'multipart/form-data' },
-  timeout: 0,
-});
-```
-
-Screen states:
-
-| `my-submission` | Show |
-|-----------------|------|
-| `latest: null`, `canSubmit: true` | The hand-in form |
-| `latest.status` SUBMITTED / UNDER_REVIEW | "تم التسليم، بانتظار المراجعة" + what was handed in (`content`) |
-| `latest.status` NEEDS_REVISION | Grader `feedback` + the form again (next attempt) |
-| `latest.status` GRADED | `score` / `maxScore` + `feedback` |
-| `latest.status` REJECTED | `feedback`; no form |
-| `latest.isLate` | A "متأخر" badge |
-| `attempts.length > 1` | An attempt history (newest first) |
-
-Errors to handle: `409 SUBMISSION_LOCKED` (refetch `my-submission`), `400` with `details.files` / `details.links` / `details.text`, `413` (file too large), `415` (wrong file type), `404` (no longer available: go back and refetch the list).
-
-Files in `content.files[].url` are signed links valid about 1 hour: open them with `Linking.openURL` or `expo-web-browser`, never store them, and refetch if opening fails with `403`.
-
-### 3.2 Notifications tab
-
-Grading (graded, revision requested, rejected) now creates in-app notifications for the student in the database, but the backend has **no endpoint to read them yet**. The tab needs `GET /v1/notifications` (and a "mark as read" call) on the backend first.
+Types sent today: `NEW_ASSIGNMENT`, `ENROLLMENT` (accepted, rejected, …, with the admin's note), `GRADED`. In-app only; push notifications are not set up yet.
 
 ## 4. Rules worth knowing (what the API will refuse)
 
