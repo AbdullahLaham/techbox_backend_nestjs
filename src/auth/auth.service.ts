@@ -139,14 +139,18 @@ export class AuthService {
       Number(this.configService.get<string>('JWT_REFRESH_EXPIRATION_DAYS')) || DEFAULT_REFRESH_TTL_DAYS;
     const refreshToken = randomBytes(48).toString('base64url');
 
-    await this.prisma.userSession.create({
-      data: {
-        userId: user.id,
-        refreshToken: hashToken(refreshToken),
-        deviceInfo: deviceInfo ?? null,
-        expiresAt: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.userSession.create({
+        data: {
+          userId: user.id,
+          refreshToken: hashToken(refreshToken),
+          deviceInfo: deviceInfo ?? null,
+          expiresAt: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
+        },
+      }),
+      // Sign-in and refresh both pass here: "last seen" for the admin users list.
+      this.prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } }),
+    ]);
 
     return { accessToken, refreshToken };
   }

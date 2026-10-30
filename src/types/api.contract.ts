@@ -94,6 +94,12 @@ export const API_ENDPOINTS = {
   notificationsUnreadCount: '/v1/notifications/unread-count',
   notificationRead: (id: string) => `/v1/notifications/${encodeURIComponent(id)}/read`,
   notificationsReadAll: '/v1/notifications/read-all',
+  // User management (Bearer + USER_MANAGER_ROLES)
+  adminUsers: '/v1/admin/users',
+  adminUser: (id: string) => `/v1/admin/users/${encodeURIComponent(id)}`,
+  adminUserRole: (id: string) => `/v1/admin/users/${encodeURIComponent(id)}/role`,
+  adminUserStatus: (id: string) => `/v1/admin/users/${encodeURIComponent(id)}/status`,
+  adminUserPassword: (id: string) => `/v1/admin/users/${encodeURIComponent(id)}/password`,
 } as const;
 
 /* ================================ Common ================================ */
@@ -125,6 +131,10 @@ export type ApiErrorCode =
   | 'QUIZ_NOT_READY'
   | 'MAX_ATTEMPTS_REACHED'
   | 'SUBMISSION_LOCKED'
+  | 'EMAIL_TAKEN'
+  | 'PHONE_TAKEN'
+  | 'CANNOT_MODIFY_SELF'
+  | 'LAST_SUPER_ADMIN'
   | 'FILE_TOO_LARGE'
   | 'UNSUPPORTED_FILE_TYPE'
   | 'TOO_MANY_REQUESTS'
@@ -156,6 +166,10 @@ export const API_ERROR_MESSAGES_AR: Record<ApiErrorCode, string> = {
   QUIZ_NOT_READY: 'لا يمكن نشر الاختبار قبل اكتمال أسئلته وإجاباته الصحيحة.',
   MAX_ATTEMPTS_REACHED: 'استنفدت عدد المحاولات المسموح بها لهذا الاختبار.',
   SUBMISSION_LOCKED: 'لا يمكنك التسليم الآن: تسليمك السابق قيد المراجعة أو تم تقييمه.',
+  EMAIL_TAKEN: 'هذا البريد الإلكتروني مستخدم لحساب آخر.',
+  PHONE_TAKEN: 'رقم الهاتف هذا مستخدم لحساب آخر.',
+  CANNOT_MODIFY_SELF: 'لا يمكنك تغيير صلاحية أو حالة حسابك بنفسك.',
+  LAST_SUPER_ADMIN: 'لا يمكن تنفيذ ذلك على آخر مدير نظام نشط.',
   FILE_TOO_LARGE: 'حجم الملف أكبر من الحد المسموح.',
   UNSUPPORTED_FILE_TYPE: 'نوع الملف غير مدعوم.',
   TOO_MANY_REQUESTS: 'عدد كبير من الطلبات، يرجى المحاولة بعد قليل.',
@@ -680,6 +694,138 @@ export type UnreadCount = { unreadCount: number };
 /** POST /v1/notifications/read-all */
 export type ReadAllResult = { updated: number; unreadCount: 0 };
 
+/* ============================ User management =========================== */
+
+export type UserStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+export const GLOBAL_ROLES: readonly GlobalRole[] = ['SUPER_ADMIN', 'INCUBATOR_MANAGER', 'INSTRUCTOR', 'MENTOR', 'STUDENT', 'GUEST'];
+/** Statuses an admin can set. SUSPENDED and ARCHIVED sign the user out everywhere and block login. */
+export const SETTABLE_USER_STATUSES: readonly UserStatus[] = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'];
+
+/** Who can open /v1/admin/users. */
+export const USER_MANAGER_ROLES = ['SUPER_ADMIN', 'INCUBATOR_MANAGER'] as const;
+
+/**
+ * Which roles each manager may create, edit, suspend, or assign. A user is manageable when
+ * their current role is in the list; a role change also needs the new role in the list.
+ * Nobody can change their own role or status (CANNOT_MODIFY_SELF), and the last active
+ * SUPER_ADMIN cannot be demoted, suspended or archived (LAST_SUPER_ADMIN).
+ */
+export const MANAGEABLE_ROLES: Record<(typeof USER_MANAGER_ROLES)[number], readonly GlobalRole[]> = {
+  SUPER_ADMIN: ['SUPER_ADMIN', 'INCUBATOR_MANAGER', 'INSTRUCTOR', 'MENTOR', 'STUDENT', 'GUEST'],
+  INCUBATOR_MANAGER: ['INSTRUCTOR', 'MENTOR', 'STUDENT', 'GUEST'],
+};
+
+/** true when `actor` may manage a user with `targetRole` (UI: show or hide the actions). */
+export function canManageRole(actor: GlobalRole, targetRole: GlobalRole): boolean {
+  return actor === 'SUPER_ADMIN' || actor === 'INCUBATOR_MANAGER'
+    ? MANAGEABLE_ROLES[actor].includes(targetRole)
+    : false;
+}
+
+export const USER_LIMITS = {
+  passwordMin: 8,
+  passwordMax: 128,
+  nameMax: 100,
+  phoneMax: 30,
+  pageSizeMax: 100,
+} as const;
+
+export type AdminUserSort = 'createdAt' | '-createdAt' | 'email' | '-email' | 'lastSeenAt' | '-lastSeenAt';
+
+/** GET /v1/admin/users */
+export type AdminUserListQuery = {
+  /** Default 1 */
+  page?: number;
+  /** Default 20, max 100 */
+  pageSize?: number;
+  /** Case-insensitive match on email, first/last name, Arabic/English full name, phone. */
+  q?: string;
+  role?: GlobalRole;
+  status?: UserStatus;
+  /** Default -createdAt */
+  sort?: AdminUserSort;
+};
+
+export type AdminUserListItem = {
+  id: string;
+  email: string;
+  globalRole: GlobalRole;
+  status: UserStatus;
+  firstName: string | null;
+  lastName: string | null;
+  /** fullNameAr when the user gave one, else "firstName lastName". */
+  displayName: string;
+  phoneNumber: string | null;
+  avatarUrl: string | null;
+  createdAt: IsoDate;
+  /** Last sign-in or session refresh; null when never signed in. */
+  lastSeenAt: IsoDate | null;
+  /** false when the caller may only view this user (role above theirs, or themselves). */
+  canManage: boolean;
+};
+
+/** Counts for the filter tabs, over the same search (`q`) ignoring `role` and `status`. */
+export type AdminUserList = Paginated<AdminUserListItem> & {
+  roleCounts: Record<GlobalRole, number>;
+  statusCounts: Record<UserStatus, number>;
+};
+
+/** GET /v1/admin/users/:id and every write. */
+export type AdminUserDetail = AdminUserListItem & {
+  updatedAt: IsoDate;
+  profile: {
+    bio: string | null;
+    fullNameAr: string | null;
+    fullNameEn: string | null;
+    phoneWhatsApp: string | null;
+    governorate: string | null;
+    age: number | null;
+  };
+  /** Active sessions (signed-in devices). */
+  activeSessions: number;
+  stats: {
+    enrollments: number;
+    activeEnrollments: number;
+    submissions: number;
+    quizAttempts: number;
+    /** Submissions this user graded (staff). */
+    gradedSubmissions: number;
+  };
+};
+
+/** POST /v1/admin/users -> 201 AdminUserDetail. The account is ACTIVE and can sign in at once. */
+export type CreateUserBody = {
+  email: string;
+  /** 8 to 128 characters. Share it with the person; they sign in with it. */
+  password: string;
+  firstName: string;
+  lastName: string;
+  /** Must be in MANAGEABLE_ROLES for the caller (403 otherwise). */
+  role: GlobalRole;
+  /** Unique (409 PHONE_TAKEN). */
+  phoneNumber?: string | null;
+};
+
+/** PATCH /v1/admin/users/:id -> AdminUserDetail. Omitted = unchanged; null clears phoneNumber. */
+export type UpdateUserBody = {
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string | null;
+};
+
+/** PATCH /v1/admin/users/:id/role -> AdminUserDetail. Takes effect on the user's next request. */
+export type ChangeUserRoleBody = { role: GlobalRole };
+
+/**
+ * PATCH /v1/admin/users/:id/status -> AdminUserDetail. SUSPENDED / ARCHIVED revoke every
+ * session (the user is signed out on all devices and cannot sign in); ACTIVE restores access.
+ * ARCHIVED is for people who left: their data (enrollments, submissions, grades) is kept.
+ */
+export type ChangeUserStatusBody = { status: 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED' };
+
+/** POST /v1/admin/users/:id/password -> 204. Sets a new password and signs the user out everywhere. */
+export type ResetUserPasswordBody = { password: string };
+
 /* ================================ Labels ================================ */
 
 export const ENROLLMENT_STATUS_LABELS_AR: Record<EnrollmentStatus, string> = {
@@ -696,6 +842,22 @@ export const PROGRAM_STATUS_LABELS_AR: Record<ProgramStatus, string> = {
   PUBLISHED: 'منشور',
   ONGOING: 'جارٍ',
   COMPLETED: 'منتهٍ',
+  ARCHIVED: 'مؤرشف',
+};
+
+export const ROLE_LABELS_AR: Record<GlobalRole, string> = {
+  SUPER_ADMIN: 'مدير النظام',
+  INCUBATOR_MANAGER: 'مدير الحاضنة',
+  INSTRUCTOR: 'مدرّب',
+  MENTOR: 'موجّه',
+  STUDENT: 'طالب',
+  GUEST: 'ضيف',
+};
+
+export const USER_STATUS_LABELS_AR: Record<UserStatus, string> = {
+  PENDING: 'بانتظار التفعيل',
+  ACTIVE: 'نشط',
+  SUSPENDED: 'موقوف',
   ARCHIVED: 'مؤرشف',
 };
 

@@ -12,6 +12,7 @@ model User {
   passwordHash      String
   status            UserStatus     @default(ACTIVE)
   globalRole        GlobalRole     @default(STUDENT)
+  lastSeenAt        DateTime?      // آخر تسجيل دخول أو تجديد جلسة
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
   enrollments       Enrollment[]

@@ -64,6 +64,7 @@ Exact TypeScript types are in the backend under `src/types/`, copied unchanged i
 | Review and grade submissions | `SUPER_ADMIN`, `INCUBATOR_MANAGER`, `INSTRUCTOR` (`SUBMISSION_REVIEWER_ROLES`) |
 | Quizzes (edit, attempts) | `CONTENT_MANAGER_ROLES` |
 | Enrollment review | `SUPER_ADMIN`, `INCUBATOR_MANAGER` (`ENROLLMENT_MANAGER_ROLES`) |
+| User management (`/v1/admin/users`) | `SUPER_ADMIN` (every role), `INCUBATOR_MANAGER` (instructors, mentors, students, guests): see **`api-contract-users.md`** |
 
 There is no staff-to-program link in the schema yet, so staff roles apply to every program.
 
@@ -347,6 +348,10 @@ await api.post(SUBMISSIONS_ENDPOINTS.submit(assignmentId), form, {
 For link or text only, a JSON body `{ text, links }` works too. `GET .../my-submission` returns `canSubmit` and `submitBlockReason`.
 
 ---
+
+## 9b. User management
+
+`/v1/admin/users`: list and search accounts, create staff, edit profiles, change roles, suspend / reactivate / archive, reset passwords. Full contract with rules, payloads and a page outline: **`api-contract-users.md`**.
 
 ## 10. Changes in this release
 
