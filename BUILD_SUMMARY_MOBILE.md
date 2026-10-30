@@ -2,7 +2,7 @@
 
 Short guide for the `teckbox_lms_app` team: what the backend now offers learners, what the app already uses, and what is left to build. Full endpoint and payload details: **`api-contract-mobile.md`**. Types: `src/types/*.contract.ts` (copied from the backend's `src/types/`; re-copy, never edit).
 
-Status: 2026-10-29. Backend: 52 end-to-end tests passing. Change log per update: `docs/updates/`.
+Status: 2026-10-30. Backend: 55 end-to-end and 6 unit tests passing. Change log per update: `docs/updates/`.
 
 ## 1. What the backend provides
 
@@ -23,36 +23,33 @@ Errors on `/v1` routes: `{ statusCode, code, message, details? }`. `src/api/erro
 
 | Screen | Uses |
 |--------|------|
-| Courses tab, `course/[slug]` | Catalog, program detail with `myEnrollment` / `canAccessContent` |
+| Courses tab, `course/[slug]` | Catalog, program detail with `myEnrollment` / `canAccessContent`, lesson ticks |
 | `enrollments/[programId]` | Apply (multipart with receipt) |
-| Assignments tab, `assignment/[assignmentId]` | List, detail, hand-in form and submission history (`SubmissionForm`, `SubmissionSection`, `src/api/submissions.ts`) |
-| `lesson/[nodeId]` | Lesson content (video, reading) |
+| Assignments tab, `assignment/[assignmentId]` | List, detail, hand-in form and submission history |
+| `lesson/[nodeId]` | Video (position reporting and resume), reading (mark done), completion card |
 | `quiz/[quizId]`, `quiz/attempt/[attemptId]` | Taking a quiz and its result |
+| Home | Program progress from `my-enrollments` (overview cards still partly mocked) |
+| Notifications tab | List, unread badge, mark read / all read, navigation from `actionUrl` |
 | Session | Login with refresh tokens kept in secure storage |
 
 ## 3. Left to build
 
-### 3.1 Lesson progress (new API, docs/updates/01-program-progress.md)
+### 3.1 Still mocked
 
-| Part | Call |
-|------|------|
-| Video player in `lesson/[nodeId]` | `POST /v1/nodes/:nodeId/progress` with `{ "positionSec": n }` about every 15 s, on pause and when leaving; start playback at `progress.lastPositionSec` from `GET /v1/nodes/:nodeId` |
-| Reading lesson | A "تم الانتهاء" button → `{ "completed": true }` |
-| Program screen | Tick lessons with `isCompleted`; progress bar from `myEnrollment.progressPct` and `completedLessons / totalLessons` |
-| Home | Progress per program from `GET /v1/enrollments/my-enrollments` |
+Parts of the home screen use fixtures until the backend offers a learner overview endpoint (`/v1/dashboard/me`).
 
-The response's `programProgress` already holds the new program percentage, so the screen can update without refetching.
+### 3.2 Waiting for backend features
 
-### 3.2 Notifications tab (new API, docs/updates/02-notifications.md)
+| Feature | Needs |
+|---------|-------|
+| Push notifications | Expo push tokens endpoint and sending on the backend |
+| Deadline reminders | A scheduled job on the backend |
+| Certificates, my startup | Those domains on the backend |
 
-| Part | Call |
-|------|------|
-| Tab badge | `GET /v1/notifications/unread-count` on app focus |
-| List (pull to refresh, infinite scroll) | `GET /v1/notifications?page=&pageSize=20` |
-| Tap an item | `PATCH /v1/notifications/:id/read`, then open `actionUrl`: `/assignments/<id>` → `assignment/[assignmentId]`, `/programs/<slug>` → `course/[slug]` |
-| "تعليم الكل كمقروء" | `POST /v1/notifications/read-all` |
+### 3.3 Small improvements
 
-Types sent today: `NEW_ASSIGNMENT`, `ENROLLMENT` (accepted, rejected, …, with the admin's note), `GRADED`. In-app only; push notifications are not set up yet.
+- Lint: 18 findings from the React Hooks rules in older screens (`useRef(new Animated.Value()).current`, …); CI reports them without failing. Fix, then make lint blocking in `.github/workflows/ci.yml`.
+- On `429` (too many login attempts) show the wait time from `retryAfterSec`.
 
 ## 4. Rules worth knowing (what the API will refuse)
 

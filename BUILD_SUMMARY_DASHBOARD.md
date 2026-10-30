@@ -2,7 +2,7 @@
 
 Short guide for the `techbox_dashboard` team: what the backend now offers, what the web app already uses, and what is left to build. Full endpoint and payload details: **`api-contract-admin.md`**. Types: `types/*.contract.ts` (copied from the backend's `src/types/`; re-copy, never edit).
 
-Status: 2026-10-29. Backend: 52 end-to-end tests passing. Change log per update: `docs/updates/`.
+Status: 2026-10-30. Backend: 55 end-to-end and 6 unit tests passing. Change log per update: `docs/updates/`.
 
 ## 1. What the backend provides
 
@@ -25,36 +25,31 @@ All `/v1` errors share one shape: `{ statusCode, code, message, details? }`. `li
 |--------|------|
 | `/admin/content` and `/admin/content/[slug]` | Admin programs API, curriculum API, lessons API |
 | `/admin/lessons/...` (lesson editor, reading file, quiz questions and settings, attempts) | Lessons and quizzes APIs (`services/nodes-admin-service.ts`) |
-| `/admin/enrollments` | Enrollment review API (tabs with counts, receipt preview, accept/reject with note) |
+| `/admin/enrollments` | Enrollment review (tabs with counts, receipt preview, accept/reject with note) and each learner's progress |
 | `/admin/assignments` (list, new, edit, attachments) | Assignments API (`services/assignments-admin-service.ts`) |
 | `/admin/grading`, `/admin/grading/[id]` | Submissions review queue, submission review, grade form (`services/submissions-service.ts`) |
-| `/programs`, `/programs/[slug]` | Catalog, program detail with lock state, apply dialog |
-| `/assignments`, `/assignments/[id]` | Learner list and detail, hand-in panel (`components/submissions/student/hand-in-panel.tsx`) |
+| `/programs`, `/programs/[slug]` | Catalog, classroom with lock state, apply dialog, lesson view with video position / reading completion and curriculum ticks |
+| `/assignments`, `/assignments/[id]` | Learner list and detail, hand-in panel |
+| Header bell | Notifications (unread count, list, mark read, mark all read) |
 
 ## 3. Left to build
 
-### 3.1 Lesson progress (new API, docs/updates/01-program-progress.md)
+### 3.1 Still mocked
 
-| Part | Call |
-|------|------|
-| Video lesson in `/programs/[slug]` | `POST /v1/nodes/:nodeId/progress` with `{ positionSec }` about every 15 s and on pause/leave; resume from `GET /v1/nodes/:nodeId` → `progress.lastPositionSec` |
-| Reading lesson | A "تم الانتهاء" button → `{ completed: true }` |
-| Curriculum ticks | `ProgramNode.isCompleted` from `GET /v1/programs/:slug` |
-| Progress bar | `myEnrollment.progressPct`, `completedLessons / totalLessons`; learner dashboard from `GET /v1/enrollments/my-enrollments` (replace the mock in `services/dashboard-service.ts`) |
-| Admin enrollments table | Show `completedLessons / totalLessons` per learner |
+The admin and learner overviews (`services/dashboard-service.ts`, `lib/mocks/dashboard.ts`) serve fixtures; the backend has no `/v1/dashboard/*` aggregate endpoints yet.
 
-### 3.2 Notification bell (new API, docs/updates/02-notifications.md)
+### 3.2 Waiting for backend features
 
-| Part | Call |
-|------|------|
-| Badge in the header | `GET /v1/notifications/unread-count` (on load and focus) |
-| Dropdown or page | `GET /v1/notifications?page=&unreadOnly=` |
-| Open one | `PATCH /v1/notifications/:id/read`, then route `actionUrl` (`/assignments/<id>` → `/assignments/[id]`, `/programs/<slug>` → `/programs/[slug]`) |
-| Mark all read | `POST /v1/notifications/read-all` |
+| Page | Needs |
+|------|-------|
+| `/admin/users` (coming soon) | A users API: list, create staff, change role, suspend |
+| `/admin/startups`, `/my-startup` | The incubator (startups) domain: schema and API |
+| `/certificates` | Certificates: schema, issuing rules and API |
+| `/admin/settings` | Platform settings API |
 
-### 3.3 Still mocked
+### 3.3 Small improvements
 
-The admin and learner overviews (`services/dashboard-service.ts`) serve fixtures; the backend has no `/dashboard/*` aggregate endpoints yet.
+- On `429` (too many login attempts) show the wait time from `retryAfterSec`.
 
 ## 4. Rules worth knowing (what the API will refuse)
 

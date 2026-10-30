@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: techbox
+          POSTGRES_PASSWORD: techbox
+          # The e2e suites wipe their database and only run when its name ends with _test.
+          POSTGRES_DB: incubator_lms_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U techbox"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://techbox:techbox@localhost:5432/incubator_lms_test
+      # Test-only values (never used outside CI); the server requires >= 24 characters.
+      JWT_ACCESS_SECRET: ci-jwt-access-secret-0123456789abcdef
+      COOKIE_SECRET: ci-cookie-secret-0123456789abcdef
+      STORAGE_SIGNING_SECRET: ci-storage-signing-secret-0123456789
+      PUBLIC_API_URL: http://localhost:5000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prisma client and migrations
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
+
+      - name: End-to-end tests
+        run: npm run test:e2e

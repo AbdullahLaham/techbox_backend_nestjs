@@ -1,114 +1,120 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# TechBox Incubator: backend API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS + Prisma + PostgreSQL API for the TechBox learning and incubator platform. It serves two clients:
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+| Client | Repository | Uses |
+|--------|------------|------|
+| Web app (admin dashboard + learner pages, Next.js) | `techbox_dashboard_app` | `api-contract-admin.md` |
+| Learner mobile app (Expo) | `techbox_expo_app` | `api-contract-mobile.md` |
 
-## Description
+## Features
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Area | What it does |
+|------|--------------|
+| Auth | Register, login, single-use refresh tokens, logout; roles `SUPER_ADMIN`, `INCUBATOR_MANAGER`, `INSTRUCTOR`, `MENTOR`, `STUDENT`, `GUEST` |
+| Programs | Programs in any status, seats, cohort dates, tracks → modules → lessons, Arabic slugs |
+| Enrollments | Applications with payment receipt, admin review (accept/reject/suspend/complete with a note), seat checks |
+| Lessons | Video (Bunny link), reading material (link or uploaded file), quiz lessons; lesson progress and resume |
+| Quizzes | 4-option questions, publishing checks, automatic grading, attempt limits; correct answers never sent before an attempt |
+| Assignments | Draft/publish/archive, instruction files, student hand-in (files, links, text), grading with feedback |
+| Progress | Live program progress from completed mandatory lessons |
+| Notifications | In-app notifications for grading, enrollment decisions and new assignments |
+| Files | Private storage behind short-lived signed links (`StorageService`; local disk today) |
 
-## Project setup
+## Requirements
 
-```bash
-$ npm install
-```
+- Node.js 24
+- PostgreSQL 15 or newer
 
-## Compile and run the project
+## Setup
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+cp .env.example .env          # then fill in the secrets (see the comments in the file)
+npx prisma migrate deploy     # create / update the database schema
+npm run seed                  # first owner (and manager) accounts, passwords from .env
+npm run start:dev             # http://localhost:5000
 ```
 
-## Run tests
+The server refuses to start when `JWT_ACCESS_SECRET` or `COOKIE_SECRET` is missing or shorter than 24 characters. In production (`NODE_ENV=production`) it also requires `STORAGE_SIGNING_SECRET`, `PUBLIC_API_URL` and `CORS_ORIGINS` (`src/config/env.validation.ts`).
+
+Generate a secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+
+### First accounts
+
+There is no public way to register as staff. `npm run seed` creates the system owner (`SUPER_ADMIN`) and optionally an incubator manager from `SEED_OWNER_*` / `SEED_MANAGER_*` in `.env`. Re-running keeps existing passwords unless `SEED_RESET_PASSWORDS=true`.
+
+## Scripts
+
+| Command | What it does |
+|---------|--------------|
+| `npm run start:dev` | Development server with reload |
+| `npm run build` / `npm run start:prod` | Production build / run `dist/main` |
+| `npm run lint` | oxlint |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:e2e` | End-to-end tests against a real database (see below) |
+| `npm run seed` | First admin accounts |
+| `npx prisma migrate dev --name <change>` | New migration after editing `prisma/schema.prisma` |
+| `npx tsx scripts/migrate-legacy-receipts.ts` | One-off: move pre-storage receipts out of `uploads/` |
+
+## Tests
+
+End-to-end suites **wipe the database they run on**, so they only run when the database name ends with `_test`:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+createdb incubator_lms_test                     # once
+export DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/incubator_lms_test
+npx prisma migrate deploy
+npm run test:e2e
 ```
 
-## Deployment
+CI (`.github/workflows/ci.yml`) runs lint, build, unit and end-to-end tests on every push and pull request, with a PostgreSQL service.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Project structure
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```
+src/
+  auth/           login, refresh tokens, JWT strategy, roles guard
+  programs/       public catalog/detail, admin programs and curriculum
+  enrollments/    applications, admin review
+  nodes/          lessons (video, reading, quiz) and lesson progress
+  quizzes/        quiz editing, attempts, grading
+  assignments/    assignment management, student list/detail
+  submissions/    hand-ins and grading
+  progress/       program progress (global service)
+  notifications/  in-app notifications (global service)
+  storage/        StorageService, local signed-link implementation
+  common/         error model, uploads checks, rate limits, DTO helpers
+  config/         environment validation
+  types/          API contracts shared with the clients (*.contract.ts)
+prisma/           schema, migrations, seed
+test/             end-to-end suites
+docs/updates/     one note per update (what changed and why)
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## API documentation
 
-## Observability
+| Document | Content |
+|----------|---------|
+| `api-contract-admin.md` | Every endpoint the web app uses (admin + learner pages) |
+| `api-contract-mobile.md` | Every endpoint the mobile app uses |
+| `src/types/*.contract.ts` | Exact TypeScript types; copied unchanged into both clients |
+| `BUILD_SUMMARY_DASHBOARD.md`, `BUILD_SUMMARY_MOBILE.md` | What each client already uses and what is left |
+| `docs/updates/` | Change notes per update |
+| `ASSIGNMENTS_SPEC.md` | Assignments feature specification |
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+All `/v1` routes return errors as `{ statusCode, code, message, details? }`; codes and Arabic messages are in `src/types/api.contract.ts`.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+## Security
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+- No fallback secrets; startup validation of the environment.
+- `helmet` security headers; CORS allow list in production.
+- Rate limits on login (per email and per IP), register and refresh; upload rate limits.
+- Uploaded files are type-checked by content, stored privately and served through signed, expiring links.
+- Behind a reverse proxy set `TRUST_PROXY=1` so rate limits see client IPs. The rate limiter is in memory: use Redis before running several instances.
 
-## Resources
+## Production checklist
 
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- `NODE_ENV=production`, fresh random secrets, `CORS_ORIGINS`, `PUBLIC_API_URL`, `STORAGE_SIGNING_SECRET`, `TRUST_PROXY`.
+- `npx prisma migrate deploy` on every release, `npm run seed` once.
+- Persistent storage for `STORAGE_LOCAL_DIR`, or switch `StorageService` to Bunny Storage / S3.
