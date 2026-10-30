@@ -78,12 +78,9 @@ import { PrismaModule } from '../prisma/prisma.module.js';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const secret =
-          configService.get<string>('JWT_ACCESS_SECRET') ||
-          'your-super-secret-access-key-techbox';
-
         return {
-          secret,
+          // Required at startup (src/config/env.validation.ts); no fallback secret.
+          secret: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
           signOptions: {
             expiresIn: (configService.get<string>('JWT_ACCESS_EXPIRATION') || '15m') as any,
           },

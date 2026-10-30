@@ -5,6 +5,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ConfigModule } from '@nestjs/config';
+import { validateEnv } from './config/env.validation.js';
 import { ProgramsModule } from './programs/programs.module.js';
 import { EnrollmentsModule } from './enrollments/enrollments.module.js';
 // تم حذف استيراد الـ AssignmentsController المباشر من هنا
@@ -21,6 +22,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Refuses to start with missing or weak secrets (see the file for the rules).
+      validate: validateEnv,
     }),
     AuthModule,
     PrismaModule,

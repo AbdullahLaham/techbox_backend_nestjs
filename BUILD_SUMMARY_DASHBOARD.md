@@ -72,7 +72,7 @@ The admin and learner overviews (`services/dashboard-service.ts`) serve fixtures
 
 ## 5. Setup
 
-- Backend `.env`: `STORAGE_SIGNING_SECRET` (keeps file links valid across restarts) and `PUBLIC_API_URL` (host used in signed links).
-- Database: `npx prisma migrate deploy` (6 migrations). Old receipts in `uploads/`: `npx tsx scripts/migrate-legacy-receipts.ts` once.
+- Backend `.env`: copy `.env.example`; the server refuses to start without `JWT_ACCESS_SECRET` / `COOKIE_SECRET` (≥ 24 characters). Add the dashboard URL to `CORS_ORIGINS` in production. Also `STORAGE_SIGNING_SECRET` (keeps file links valid across restarts) and `PUBLIC_API_URL` (host used in signed links).
+- Database: `npx prisma migrate deploy` (7 migrations), then `npm run seed` for the first admin accounts (passwords from `.env`, see `.env.example`). Old receipts in `uploads/`: `npx tsx scripts/migrate-legacy-receipts.ts` once.
 - Web app: `NEXT_PUBLIC_API_URL` pointing at the backend.
 - After a backend contract change, re-copy `src/types/*.contract.ts` into `types/`.

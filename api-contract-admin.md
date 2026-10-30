@@ -79,6 +79,8 @@ There is no staff-to-program link in the schema yet, so staff roles apply to eve
 | GET | `/auth/me` | Bearer | `{ id, email, globalRole, firstName, lastName }` |
 | POST | `/auth/register` | `{ email, password, firstName, lastName, bio? }` | `201 { message, user }` |
 
+Login is limited to 10 tries per email and 30 per IP per 15 minutes (register 10 per IP per hour, refresh 60 per IP per 15 minutes). Over the limit: `429` with `code: "TOO_MANY_REQUESTS"`, `retryAfterSec` and a `Retry-After` header. The first admin accounts come from `npm run seed` (see `.env.example`); there is no way to register as staff.
+
 ---
 
 ## 3. Programs and curriculum (`/v1/admin/programs`)

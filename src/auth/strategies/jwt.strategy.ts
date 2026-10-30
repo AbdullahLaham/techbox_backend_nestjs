@@ -121,10 +121,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {
-    // نحدد المفتاح بشكل واضح مع توفير نفس القيمة الاحتياطية الموحدة
-    const secret =
-      configService.get<string>('JWT_ACCESS_SECRET') ||
-      'your-super-secret-access-key-techbox';
+    // المفتاح إلزامي ويُتحقق منه عند التشغيل (src/config/env.validation.ts)، بلا قيمة احتياطية
+    const secret = configService.getOrThrow<string>('JWT_ACCESS_SECRET');
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

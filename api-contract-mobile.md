@@ -71,6 +71,7 @@ Every `/v1` route answers errors as:
 - Store both tokens in SecureStore. The refresh token is **single use**: every refresh returns a new pair; replace both.
 - On `401` from any API call, call `/auth/refresh` once; if that fails too, sign out.
 - Suspended or archived accounts get `401` everywhere, including login.
+- Rate limits (per 15 minutes unless noted): login 10 tries per email and 30 per device/IP, register 10 per IP per hour, refresh 60 per IP. Over the limit: `429 { statusCode, code: "TOO_MANY_REQUESTS", message, retryAfterSec }` with a `Retry-After` header. Show "محاولات كثيرة، حاول بعد X دقيقة" and do not retry automatically.
 
 ---
 
