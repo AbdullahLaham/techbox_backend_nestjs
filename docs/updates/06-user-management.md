@@ -57,11 +57,31 @@ Migration `…_user_last_seen`: `User.lastSeenAt` (nullable), set on every sign-
 | `api-contract-users.md` | **New**: dashboard contract with a page outline and a service sketch |
 | `api-contract-admin.md` | Roles table and section 9b link to it |
 
-## Dashboard work (not done here)
+## Dashboard page `/admin/users`
 
-Build `/admin/users` from `api-contract-users.md` §4: tabs with counts, search and filters, table, "add user" dialog, detail panel, role/status/password actions shown when `canManage`.
+Replaces the "coming soon" page (sidebar item renamed «المستخدمون والصلاحيات»; visible to owners and managers only).
+
+| Part | Behaviour |
+|------|-----------|
+| Role tabs with counts | From `roleCounts` (follow the search, ignore the filters) |
+| Search (debounced), status filter with counts, sort, paging | Any change returns to page 1; previous page stays on screen while loading |
+| Table | Name (+ «أنت» on your own row), email, role and status badges, last seen (relative), created; archived rows dimmed |
+| «إضافة مستخدم» | Only roles you may create; password with generate / show / copy; server errors under the field; afterwards shows the temporary password once and offers to open the account |
+| Detail panel | Profile, sessions, stats; edit name/phone (also on yourself); change role and status with confirm dialogs (hidden on yourself and when `canManage` is false); reset password (resetting your own signs you out) |
+
+| File | |
+|------|-|
+| `app/(admin)/admin/users/page.tsx` | Page |
+| `components/users/admin/users-directory.tsx` | List, tabs, filters, paging |
+| `components/users/admin/create-user-dialog.tsx` | Create dialog |
+| `components/users/admin/user-panel.tsx` | Detail panel and actions |
+| `components/users/admin/user-parts.tsx` | Badges, form field, password input |
+| `hooks/use-admin-users.ts` | React Query reads and writes (write result replaces the row, then lists refetch) |
+| `services/users-admin-service.ts`, `lib/users.ts` | API calls; validation, badge colours, password generator |
+| `config/navigation.ts` | Labels |
 
 ## Verification
 
 - End-to-end 63/63 (8 new), unit tests, build and typecheck pass.
 - Contract copied to `techbox_dashboard/types/` and `teckbox_lms_app/src/types/`; both typecheck.
+- Dashboard: typecheck, lint and `next build` compile pass (`/admin/users` prerendered).
