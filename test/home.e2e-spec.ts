@@ -22,6 +22,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { ActivityService } from '../src/activity/activity.service.js';
 import type { MyEnrollment } from '../src/types/api.contract.js';
 import type { HomeResponse } from '../src/types/home.contract.js';
 
@@ -110,6 +111,17 @@ describe.skipIf(!dbName.endsWith('_test'))('Home feed (e2e)', () => {
     // Joined later (so the newest ACTIVE one), never opened.
     await program('second', { status: ProgramStatus.ONGOING });
     await node('secondReading', 'second', NodeType.READING_MATERIAL);
+    await node('secondQuiz', 'second', NodeType.QUIZ, {
+      quiz: {
+        create: {
+          title: 'Q',
+          passingScore: 1,
+          isPublished: true,
+          questions: { create: { text: 'q', points: 1, options: { create: [0, 1, 2, 3].map((i) => ({ text: `o${i}`, isCorrect: i === 0, orderIndex: i })) } } },
+        },
+      },
+    });
+    ids.secondQuizId = (await prisma.quiz.findUniqueOrThrow({ where: { nodeId: ids.secondQuiz }, select: { id: true } })).id;
     await enroll('student', 'second', EnrollmentStatus.ACTIVE);
 
     await program('finished', { status: ProgramStatus.COMPLETED });
@@ -240,6 +252,45 @@ describe.skipIf(!dbName.endsWith('_test'))('Home feed (e2e)', () => {
     expect(today).toMatchObject({ isActive: true, isFuture: false, date: new Date().toISOString().slice(0, 10) });
     expect(week.activeDaysCount).toBe(1);
     expect(week.days[0].weekday).toBe('SAT');
+    // Several actions in a row share 15-minute windows (at most 2 if the test crossed a boundary).
+    const rows = await prisma.learningActivity.count({ where: { userId: ids.student } });
+    expect(rows).toBeGreaterThanOrEqual(1);
+    expect(rows).toBeLessThanOrEqual(2);
+  });
+
+  it('every kind of student action is logged, once per window; earlier days of the week count', async () => {
+    const activity = app.get(ActivityService);
+    const only = async (action: () => Promise<unknown>) => {
+      await prisma.learningActivity.deleteMany({ where: { userId: ids.newcomer } });
+      await action();
+      return prisma.learningActivity.count({ where: { userId: ids.newcomer } });
+    };
+    await enroll('newcomer', 'second', EnrollmentStatus.ACTIVE);
+    await enroll('newcomer', 'live', EnrollmentStatus.ACTIVE);
+
+    expect(await only(() => progress('newcomer', 'secondReading', { completed: true }))).toBe(1);
+    expect(
+      await only(() => http().post(`/v1/assignments/${ids.taskAssignment}/submit`).set(as('newcomer')).send({ text: 'حل' }).expect(201)),
+    ).toBe(1);
+    // A failed attempt: logged as activity, and no lesson completed.
+    expect(
+      await only(() => http().post(`/v1/quizzes/${ids.secondQuizId}/attempts`).set(as('newcomer')).send({ answers: [] }).expect(201)),
+    ).toBe(1);
+    expect(
+      await only(async () => {
+        const at = new Date();
+        await activity.record(ids.newcomer, at);
+        await activity.record(ids.newcomer, at);
+      }),
+    ).toBe(1);
+
+    // Activity at the very start of the week (from the log, not from today's actions).
+    const before = await home('newcomer');
+    const start = before.weeklyActivity.weekStart;
+    await activity.record(ids.newcomer, new Date(`${start}T00:00:00Z`));
+    const after = (await home('newcomer')).weeklyActivity;
+    expect(after.days[0]).toMatchObject({ date: start, isActive: true });
+    expect(after.activeDaysCount).toBe(new Set([start, new Date().toISOString().slice(0, 10)]).size);
   });
 
   it('incubator card shows the caller’s own application', async () => {

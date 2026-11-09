@@ -54,7 +54,7 @@ Performance: about 13 small queries in two parallel stages. The number of querie
 
 ## Known limit
 
-`ProgressLog` stores only its first and last update. If a student works on the same lesson on several days, only the first and last of those days count as active. A full day-by-day history needs an activity log table, which is outside this read-only change.
+`ProgressLog` stores only its first and last update. If a student works on the same lesson on several days, only the first and last of those days count as active. **Fixed in [update 09](09-learning-activity.md)**, which adds an activity log table.
 
 ## Verification
 

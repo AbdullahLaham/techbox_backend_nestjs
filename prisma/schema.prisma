@@ -21,6 +21,7 @@ model User {
   gradedSubmissions Submission[]   @relation("GraderSubmissions")
   submissions       Submission[]
   quizAttempts      QuizAttempt[]
+  learningActivity  LearningActivity[]
   profile           UserProfile?
   sessions          UserSession[]
 
@@ -349,6 +350,16 @@ model Notification {
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
+}
+
+// نشاط الطالب: صف واحد لكل طالب في كل نافذة 15 دقيقة نفّذ فيها عملاً (درس، تسليم، اختبار)
+// 15 دقيقة لأن كل فروق التوقيت مضاعفات لها، فتقع كل نافذة في يوم محلي واحد بأي منطقة زمنية
+model LearningActivity {
+  userId      String
+  bucketStart DateTime // بداية النافذة (UTC)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, bucketStart])
 }
 
 model AssignmentAttachment {

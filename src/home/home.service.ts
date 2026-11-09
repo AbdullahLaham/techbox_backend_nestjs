@@ -3,6 +3,7 @@ import { AssignmentStatus, EnrollmentStatus, NodeType, Prisma, ProgramType } fro
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EMPTY_PROGRESS, ProgressService } from '../progress/progress.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { visibleTo } from '../assignments/assignments.service.js';
 import {
   CATALOG_STATUSES,
@@ -118,6 +119,7 @@ export class HomeService {
     private readonly prisma: PrismaService,
     private readonly progress: ProgressService,
     private readonly notifications: NotificationsService,
+    private readonly activity: ActivityService,
   ) {}
 
   async home(userId: string, timeZone: string): Promise<HomeResponse> {
@@ -142,7 +144,7 @@ export class HomeService {
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         }),
         this.prisma.assignment.findMany({ where: visibleTo(userId), select: assignmentSelect(userId) }),
-        this.activityTimestamps(userId, activityWindowStart(now, timeZone)),
+        this.activity.since(userId, activityWindowStart(now, timeZone)),
         // The ACTIVE program the student worked in last. Assignment lessons are left out:
         // their progress row is written when a grader grades, not by the student.
         this.prisma.progressLog.findFirst({
@@ -251,30 +253,6 @@ export class HomeService {
       recommendedPrograms: recommend(candidates, seatCounts, lessonStats, now),
       incubator: incubatorRow ? toIncubator(incubatorRow, seatCounts.get(incubatorRow.id), now) : null,
     };
-  }
-
-  /**
-   * When the student did something since `since`: watched / read a lesson (their own progress
-   * rows: video and reading lessons), submitted an assignment, or took a quiz. One query.
-   */
-  private async activityTimestamps(userId: string, since: Date): Promise<Date[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ at: Date }>>`
-      SELECT pl."updatedAt" AS at
-      FROM "ProgressLog" pl JOIN "ActivityNode" n ON n."id" = pl."nodeId"
-      WHERE pl."userId" = ${userId} AND pl."updatedAt" >= ${since}
-        AND n."type" IN ('VIDEO_LECTURE', 'READING_MATERIAL')
-      UNION
-      SELECT pl."createdAt"
-      FROM "ProgressLog" pl JOIN "ActivityNode" n ON n."id" = pl."nodeId"
-      WHERE pl."userId" = ${userId} AND pl."createdAt" >= ${since}
-        AND n."type" IN ('VIDEO_LECTURE', 'READING_MATERIAL')
-      UNION
-      SELECT s."createdAt" FROM "Submission" s
-      WHERE s."studentId" = ${userId} AND s."createdAt" >= ${since}
-      UNION
-      SELECT q."submittedAt" FROM "QuizAttempt" q
-      WHERE q."studentId" = ${userId} AND q."submittedAt" >= ${since}`;
-    return rows.map((r) => r.at);
   }
 
   /** Visible lessons (same rule as the curriculum) and total video length per program. One query. */

@@ -7,6 +7,7 @@ import { apiError } from '../common/api-errors.js';
 import { inspectUpload, type InspectedFile } from '../common/uploads.js';
 import { visibleTo } from '../assignments/assignments.service.js';
 import { ProgressService } from '../progress/progress.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import type { Viewer } from '../programs/program-mapping.js';
 import {
   SUBMISSION_LIMITS,
@@ -100,6 +101,7 @@ export class SubmissionsService {
     private readonly prisma: PrismaService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
     private readonly progress: ProgressService,
+    private readonly activity: ActivityService,
   ) {}
 
   /* -------------------------------- Student ------------------------------- */
@@ -168,6 +170,7 @@ export class SubmissionsService {
         });
       });
       this.logger.log(JSON.stringify({ userId: viewer.id, action: 'submission.create', assignmentId, submissionId }));
+      await this.activity.record(viewer.id); // never throws
       return this.toView(row);
     } catch (error) {
       await Promise.all(stored.map((key) => this.deleteFile(key)));

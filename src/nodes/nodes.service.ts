@@ -18,6 +18,7 @@ import {
 } from '../types/nodes.contract.js';
 import { toAdminQuizSummary, toStudentSummary } from '../quizzes/quiz-logic.js';
 import { ProgressService } from '../progress/progress.service.js';
+import { ActivityService } from '../activity/activity.service.js';
 import { NodeAccessService } from './node-access.service.js';
 import { CreateNodeDto, UpdateLessonProgressDto, UpdateNodeDto } from './dto/node.dto.js';
 
@@ -96,6 +97,7 @@ export class NodesService {
     private readonly access: NodeAccessService,
     private readonly progress: ProgressService,
     @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+    private readonly activity: ActivityService,
   ) {}
 
   /* --------------------------------- Admin -------------------------------- */
@@ -375,6 +377,7 @@ export class NodesService {
       create: { userId: viewer.id, nodeId, ...next },
       update: next,
     });
+    await this.activity.record(viewer.id);
     const programProgress = await this.progress.refreshForLesson(viewer.id, nodeId);
     if (next.isCompleted && !current?.isCompleted) this.audit(viewer, 'node.complete', nodeId);
     return { ...next, nodeId, recorded: true, programProgress };

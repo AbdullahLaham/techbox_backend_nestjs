@@ -17,6 +17,7 @@ import { ProgressModule } from './progress/progress.service.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { UsersModule } from './users/users.module.js';
 import { HomeModule } from './home/home.module.js';
+import { ActivityModule } from './activity/activity.service.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
@@ -36,6 +37,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     QuizzesModule,
     SubmissionsModule,
     ProgressModule,
+    ActivityModule,
     NotificationsModule,
     UsersModule,
     HomeModule,
