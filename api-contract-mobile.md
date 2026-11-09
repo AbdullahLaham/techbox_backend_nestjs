@@ -14,6 +14,7 @@ The exact TypeScript types live in the backend under `src/types/` and are copied
 | `assignments.contract.ts` | Assignment list and detail |
 | `submissions.contract.ts` | Handing in assignments, results |
 | `nodes.contract.ts` | Lessons and quizzes |
+| `home.contract.ts` | Home screen feed (no imports) |
 
 ## 1. Conventions
 
@@ -480,11 +481,35 @@ The signed-in user's own in-app notifications (`AppNotification`: `id, type, tit
 
 `actionUrl` → screen: `/assignments/<id>` → `assignment/[assignmentId]`; `/programs/<slug>` → `course/[slug]`; `null` → nothing to open.
 
-## 10. Screen map
+## 10. Home screen
+
+### `GET /v1/home?tz=Asia/Gaza` (Bearer)
+
+One read-only request feeds the whole Home tab. Types: `home.contract.ts` (`HomeResponse`, with a full example). Everything is the caller's own data.
+
+`tz` is the device's IANA timezone (`Intl.DateTimeFormat().resolvedOptions().timeZone`); it decides "today" and the week. Default `Asia/Gaza`. An unknown name gives `400 VALIDATION_FAILED`.
+
+| Field | Content |
+|-------|---------|
+| `generatedAt`, `user` | Response time; `{ id, firstName, lastName, avatarUrl }` |
+| `notifications` | `unreadCount` (same number as `/v1/notifications/unread-count`) and `latestUnread` (or `null`) |
+| `continueLearning` | The ACTIVE program worked in last, or the newest ACTIVE one if none was started: progress and `nextLesson`. `null` without an ACTIVE program. |
+| `stats` | `activePrograms`, `completedPrograms`, `pendingApplications`, `completedLessons`, `totalLessons` (same lesson counts as my-enrollments) |
+| `weeklyActivity` | Saturday to Friday, always 7 `days`: `{ date, weekday, isActive, isToday, isFuture }`, plus `activeDaysCount` |
+| `assignments` | `todoCount`, `overdueCount`, `awaitingReviewCount`, and `upcoming`: the 3 nearest deadlines to act on (same rules as `/v1/assignments`) |
+| `recommendedPrograms` | Up to 6 catalog programs the learner has not joined or applied to, open ones first, with `lessonsCount`, `videoDurationSec`, `seatsRemaining`, `canEnroll` |
+| `incubator` | The current incubator batch, with `canEnroll` and `myEnrollmentStatus`. `null` when the catalog has none. |
+
+`continueLearning.nextLesson` is `null` when nothing is left to do. Otherwise open `assignment/[assignmentId]` when `assignmentId` is set, and `lesson/[nodeId]` with `id` when it is not. Unpublished lessons, and assignments already handed in, are skipped.
+
+A day is active when the learner saved lesson progress, handed in an assignment or took a quiz. Grading by staff does not count.
+
+## 11. Screen map
 
 | Screen | Calls |
 |--------|-------|
 | Sign in / session | `/auth/login`, `/auth/refresh`, `/auth/me`, `/auth/logout` |
+| Home tab | `GET /v1/home` |
 | Catalog | `GET /v1/programs` |
 | Program | `GET /v1/programs/:slug` (with token) |
 | Apply | `POST /v1/enrollments/:programId` (multipart) |
