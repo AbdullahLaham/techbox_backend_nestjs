@@ -10,8 +10,9 @@ One note per update: the problem, what changed, API and database changes, files,
 | 04 | 2026-10-30 | [Security and production readiness](04-security-and-production.md) | `e599ef9` |
 | 05 | 2026-10-30 | [Client check, CI, READMEs, merge and GitHub](05-housekeeping-ci-readme.md) | `9713b37` |
 | 06 | 2026-10-30 | [User management API](06-user-management.md) | `9eadde6` |
+| 07 | 2026-11-05 | [Landing page fixes and Next.js security upgrade](07-landing-page-fixes.md) | dashboard `4478948`, `21ab7dd` |
 | 08 | 2026-11-07 | [Home screen feed](08-home-feed.md) | `5cbb1a3` |
 | 09 | 2026-11-09 | [Learning activity log](09-learning-activity.md) | `b964f7c` |
-| 10 | 2026-11-10 | [Profile tab: profile, account security, achievements, certificates](10-profile-account.md) | this commit |
+| 10 | 2026-11-10 | [Profile tab: profile, account security, achievements, certificates](10-profile-account.md) | `1e99e7e` |
 
 Earlier work (assignments, programs, enrollments, lessons, quizzes, submissions) is described in `ASSIGNMENTS_SPEC.md`, the API contracts and the `BUILD_SUMMARY_*.md` files.
