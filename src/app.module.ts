@@ -18,6 +18,8 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { UsersModule } from './users/users.module.js';
 import { HomeModule } from './home/home.module.js';
 import { ActivityModule } from './activity/activity.service.js';
+import { MeModule } from './me/me.module.js';
+import { CertificatesModule } from './certificates/certificates.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
@@ -41,6 +43,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     NotificationsModule,
     UsersModule,
     HomeModule,
+    MeModule,
+    CertificatesModule,
   ],
   controllers: [AppController], // <--- اترك فقط الـ AppController هنا
   providers: [AppService],

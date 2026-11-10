@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { ApiExceptionFilter } from '../common/api-errors.js';
 import { PrivateCacheInterceptor } from '../common/private-cache.interceptor.js';
 import { PrismaModule } from '../prisma/prisma.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 import { HomeQueryDto } from './home.dto.js';
 import { HomeService } from './home.service.js';
 
@@ -23,7 +24,7 @@ export class HomeController {
 
 /** ProgressService and NotificationsService come from their global modules. */
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, StorageModule],
   controllers: [HomeController],
   providers: [HomeService],
 })

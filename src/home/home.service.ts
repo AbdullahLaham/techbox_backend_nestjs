@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AssignmentStatus, EnrollmentStatus, NodeType, Prisma, ProgramType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { EMPTY_PROGRESS, ProgressService } from '../progress/progress.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { ActivityService } from '../activity/activity.service.js';
+import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service.js';
+import { avatarUrlFor } from '../me/avatar-url.js';
 import { visibleTo } from '../assignments/assignments.service.js';
 import {
   CATALOG_STATUSES,
@@ -120,6 +122,7 @@ export class HomeService {
     private readonly progress: ProgressService,
     private readonly notifications: NotificationsService,
     private readonly activity: ActivityService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
   ) {}
 
   async home(userId: string, timeZone: string): Promise<HomeResponse> {
@@ -240,7 +243,7 @@ export class HomeService {
         id: userId,
         firstName: profile?.firstName ?? null,
         lastName: profile?.lastName ?? null,
-        avatarUrl: profile?.avatarUrl ?? null,
+        avatarUrl: await avatarUrlFor(this.storage, profile?.avatarUrl),
       },
       notifications: {
         unreadCount: unread.unreadCount,

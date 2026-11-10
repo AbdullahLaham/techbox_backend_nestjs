@@ -128,7 +128,8 @@ export class AuthService {
     await this.prisma.userSession.deleteMany({ where: { refreshToken: hashToken(refreshToken) } });
   }
 
-  private async issueTokens(
+  /** New access/refresh pair and session (login, refresh, and a password change in MeService). */
+  async issueTokens(
     user: { id: string; email: string; globalRole: GlobalRole },
     deviceInfo?: string | null,
   ) {

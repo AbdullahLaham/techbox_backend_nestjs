@@ -15,6 +15,7 @@ The exact TypeScript types live in the backend under `src/types/` and are copied
 | `submissions.contract.ts` | Handing in assignments, results |
 | `nodes.contract.ts` | Lessons and quizzes |
 | `home.contract.ts` | Home screen feed (no imports) |
+| `profile.contract.ts` | Profile tab: profile, security, achievements, certificates (no imports) |
 
 ## 1. Conventions
 
@@ -508,7 +509,30 @@ One read-only request feeds the whole Home tab. Types: `home.contract.ts` (`Home
 
 A day is active when the learner saved lesson progress, handed in an assignment or took a quiz. Grading by staff does not count.
 
-## 11. Screen map
+## 11. Profile tab
+
+Types: `profile.contract.ts` (no imports). Every `/v1/me` route needs a Bearer token and acts on the caller only.
+
+| Method | Path | Body / query | Response |
+|--------|------|--------------|----------|
+| GET | `/v1/me/profile` | | `MyProfile` |
+| PATCH | `/v1/me/profile` | `UpdateMyProfileBody`: only the fields to change; `""` or `null` clears an optional field | `MyProfile` |
+| POST | `/v1/me/avatar` | multipart, field `avatar`: JPG, PNG or WEBP, up to 2 MB | `MyProfile` |
+| DELETE | `/v1/me/avatar` | | `MyProfile` |
+| POST | `/v1/me/password` | `{ currentPassword, newPassword }` | `{ accessToken, refreshToken }`: every session ends, so store this pair |
+| POST | `/v1/me/logout-all` | | `{ sessionsEnded }`: this device too, so sign out locally |
+| DELETE | `/v1/me` | `{ password }` | `204`. Students and guests only (`403` for staff) |
+| GET | `/v1/me/achievements?tz=` | `tz` as for `/v1/home` | `MyAchievements` |
+| GET | `/v1/me/certificates` | | `MyCertificates` |
+| GET | `/v1/certificates/verify/:code` | public, no token | `CertificateVerification`, `404` for an unknown code |
+
+- `avatarUrl` is a signed link that expires after about an hour. `GET /v1/home` and the admin users list return the same kind of link.
+- The national ID and email are read-only here: sending `nationalId` gives `400`.
+- A wrong password, for a password change or account deletion, gives `400 VALIDATION_FAILED` with `details.currentPassword` or `details.password`.
+- Deleting the account closes it and erases personal data. Open enrollments become DROPPED, freeing their seats, and certificates are revoked. Submissions, grades and quiz results stay without the name. The email can register again.
+- Certificates: one per COMPLETED enrollment, with a code like `TB-7K3M-9QX2`. A certificate is revoked while its enrollment is reopened, and valid again once it is completed again.
+
+## 12. Screen map
 
 | Screen | Calls |
 |--------|-------|
@@ -516,7 +540,7 @@ A day is active when the learner saved lesson progress, handed in an assignment 
 | Home tab | `GET /v1/home` |
 | Catalog | `GET /v1/programs` |
 | Program | `GET /v1/programs/:slug` (with token) |
-| Apply | `POST /v1/enrollments/:programId` (multipart) |
+| Apply | `GET /v1/enrollments/my-details` (pre-fill), `POST /v1/enrollments/:programId` (multipart) |
 | My programs | `GET /v1/enrollments/my-enrollments` |
 | Assignments tab | `GET /v1/assignments` |
 | Assignment | `GET /v1/assignments/:id`, `GET /v1/assignments/:id/my-submission`, `POST /v1/assignments/:id/submit` |
@@ -524,4 +548,8 @@ A day is active when the learner saved lesson progress, handed in an assignment 
 | Quiz | `GET /v1/quizzes/:quizId`, `POST /v1/quizzes/:quizId/attempts` |
 | Quiz result / history | `GET /v1/quizzes/attempts/:attemptId`, `GET /v1/quizzes/:quizId/attempts` |
 | Video / reading progress | `POST /v1/nodes/:nodeId/progress` |
+| Profile tab | `GET /v1/me/profile`, `GET /v1/me/achievements` |
+| Edit profile | `PATCH /v1/me/profile`, `POST` / `DELETE /v1/me/avatar` |
+| Certificates & achievements | `GET /v1/me/certificates`, `GET /v1/me/achievements` |
+| Account & security | `POST /v1/me/password`, `POST /v1/me/logout-all`, `DELETE /v1/me` |
 | Notifications tab | `GET /v1/notifications`, `GET /v1/notifications/unread-count`, `PATCH /v1/notifications/:id/read`, `POST /v1/notifications/read-all` |

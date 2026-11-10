@@ -7,21 +7,22 @@ datasource db {
 }
 
 model User {
-  id                String         @id @default(uuid())
-  email             String         @unique
+  id                String             @id @default(uuid())
+  email             String             @unique
   passwordHash      String
-  status            UserStatus     @default(ACTIVE)
-  globalRole        GlobalRole     @default(STUDENT)
-  lastSeenAt        DateTime?      // آخر تسجيل دخول أو تجديد جلسة
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  status            UserStatus         @default(ACTIVE)
+  globalRole        GlobalRole         @default(STUDENT)
+  lastSeenAt        DateTime? // آخر تسجيل دخول أو تجديد جلسة
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   enrollments       Enrollment[]
   notifications     Notification[]
   progressLogs      ProgressLog[]
-  gradedSubmissions Submission[]   @relation("GraderSubmissions")
+  gradedSubmissions Submission[]       @relation("GraderSubmissions")
   submissions       Submission[]
   quizAttempts      QuizAttempt[]
   learningActivity  LearningActivity[]
+  certificates      Certificate[]
   profile           UserProfile?
   sessions          UserSession[]
 
@@ -96,10 +97,11 @@ model Program {
   endDate          DateTime? // تاريخ انتهاء الدفعة
   isEnrollmentOpen Boolean   @default(true) // هل التسجيل مفتوح؟
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  enrollments Enrollment[]
-  tracks      Track[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  enrollments  Enrollment[]
+  tracks       Track[]
+  certificates Certificate[]
 
   @@index([status, type])
 }
@@ -311,12 +313,34 @@ model Enrollment {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
-  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program     Program      @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  certificate Certificate?
 
   @@unique([userId, programId])
   @@index([userId])
   @@index([programId, status])
+}
+
+// شهادة إتمام: تصدر تلقائياً لكل تسجيل بحالة COMPLETED، مع رمز تحقق فريد.
+// الاسم وعنوان البرنامج نسخة ثابتة وقت الإصدار. تُلغى إذا أُعيد فتح التسجيل أو حُذف الحساب.
+model Certificate {
+  id           String     @id @default(uuid())
+  code         String     @unique // رمز التحقق، مثل TB-7K3M-9QX2
+  userId       String
+  programId    String
+  enrollmentId String     @unique
+  holderName   String? // يُمسح عند حذف الحساب
+  programTitle String
+  issuedAt     DateTime
+  revokedAt    DateTime?
+  revokeReason String? // ENROLLMENT_REOPENED | ACCOUNT_DELETED
+  createdAt    DateTime   @default(now())
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program      Program    @relation(fields: [programId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ProgressLog {
@@ -447,10 +471,10 @@ enum NodeResourceKind {
 enum NotificationType {
   SYSTEM
   ASSIGNMENT_DUE
-  GRADED          // تقييم تسليم واجب (مقبول، يحتاج تعديل، مرفوض)
+  GRADED // تقييم تسليم واجب (مقبول، يحتاج تعديل، مرفوض)
   ANNOUNCEMENT
-  ENROLLMENT      // قرار الإدارة في طلب التسجيل
-  NEW_ASSIGNMENT  // نشر واجب جديد في برنامج الطالب
+  ENROLLMENT // قرار الإدارة في طلب التسجيل
+  NEW_ASSIGNMENT // نشر واجب جديد في برنامج الطالب
 }
 
 enum AssignmentStatus {

@@ -31,6 +31,12 @@ function localParts(fmt: Intl.DateTimeFormat, at: Date): { date: LocalDate; week
   return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: SHORT_WEEKDAY[parts.weekday] };
 }
 
+/** Converter from an instant to its calendar date in `timeZone` (one formatter, reused). */
+export function localDateOf(timeZone: string): (at: Date) => LocalDate {
+  const fmt = formatter(timeZone);
+  return (at) => localParts(fmt, at).date;
+}
+
 export function addDays(date: LocalDate, days: number): LocalDate {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);

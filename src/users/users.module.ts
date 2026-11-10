@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { GlobalRole } from '@prisma/client';
 import { AuthModule } from '../auth/auth.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -79,7 +80,7 @@ export class AdminUsersController {
 }
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, StorageModule],
   controllers: [AdminUsersController],
   providers: [AdminUsersService],
 })

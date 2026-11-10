@@ -1,7 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EnrollmentStatus, GlobalRole, Prisma, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { STORAGE_SERVICE, type StorageService } from '../storage/storage.service.js';
+import { avatarUrlFor } from '../me/avatar-url.js';
 import { apiError } from '../common/api-errors.js';
 import type { Viewer } from '../programs/program-mapping.js';
 import {
@@ -63,7 +65,15 @@ const BCRYPT_ROUNDS = 10;
 export class AdminUsersService {
   private readonly logger = new Logger('UsersAdmin');
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(STORAGE_SERVICE) private readonly storage: StorageService,
+  ) {}
+
+  /** avatarUrl holds a storage key for uploaded pictures: replace it with a signed link. */
+  private async withAvatarUrl<T extends { avatarUrl: string | null }>(item: T): Promise<T> {
+    return { ...item, avatarUrl: await avatarUrlFor(this.storage, item.avatarUrl) };
+  }
 
   /* --------------------------------- Reads -------------------------------- */
 
@@ -100,7 +110,7 @@ export class AdminUsersService {
     for (const g of byStatus) statusCounts[g.status] = (g._count as { _all: number })._all;
 
     return {
-      items: rows.map((r) => toListItem(r, actor)),
+      items: await Promise.all(rows.map((r) => this.withAvatarUrl(toListItem(r, actor)))),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -125,7 +135,7 @@ export class AdminUsersService {
 
     const p = row.profile;
     return {
-      ...toListItem(row, actor),
+      ...(await this.withAvatarUrl(toListItem(row, actor))),
       updatedAt: row.updatedAt.toISOString(),
       profile: {
         bio: p?.bio ?? null,
