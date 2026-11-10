@@ -18,6 +18,7 @@ import {
   type AdminEnrollmentList,
   type AdminEnrollmentListItem,
   type EnrollmentStatus as ContractEnrollmentStatus,
+  type MyApplicationDetails,
   type MyEnrollment,
 } from '../types/api.contract.js';
 import {
@@ -192,6 +193,22 @@ export class EnrollmentsService {
     });
     const progress = await this.progress.forEnrollments(rows.map((r) => r.id), { persist: true });
     return rows.map((r) => toMyEnrollment(r, progress.get(r.id)));
+  }
+
+  /** The application fields saved on the caller's profile (null when not given yet). */
+  async myApplicationDetails(userId: string): Promise<MyApplicationDetails> {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+      select: { fullNameEn: true, fullNameAr: true, age: true, phoneWhatsApp: true, nationalId: true, governorate: true },
+    });
+    return {
+      fullNameEn: profile?.fullNameEn ?? null,
+      fullNameAr: profile?.fullNameAr ?? null,
+      age: profile?.age ?? null,
+      phoneWhatsApp: profile?.phoneWhatsApp ?? null,
+      nationalId: profile?.nationalId ?? null,
+      governorate: profile?.governorate ?? null,
+    };
   }
 
   /* -------------------------------- Admin --------------------------------- */

@@ -56,4 +56,10 @@ export class EnrollmentsController {
   myEnrollments(@Req() req: any) {
     return this.enrollmentsService.myEnrollments(req.user.id);
   }
+
+  /** The caller's saved application details, to pre-fill the next application form. */
+  @Get('my-details')
+  myApplicationDetails(@Req() req: any) {
+    return this.enrollmentsService.myApplicationDetails(req.user.id);
+  }
 }

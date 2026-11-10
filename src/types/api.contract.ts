@@ -77,6 +77,7 @@ export const API_ENDPOINTS = {
   // Student (Bearer)
   enroll: (programId: string) => `/v1/enrollments/${encodeURIComponent(programId)}`,
   myEnrollments: '/v1/enrollments/my-enrollments',
+  myApplicationDetails: '/v1/enrollments/my-details',
   // Admin (Bearer + role)
   adminPrograms: '/v1/admin/programs',
   adminProgram: (idOrSlug: string) => `/v1/admin/programs/${encodeURIComponent(idOrSlug)}`,
@@ -532,6 +533,15 @@ export type EnrollmentApplicationFields = {
   phoneWhatsApp: string;
   nationalId: string;
   governorate: string;
+};
+
+/**
+ * GET /v1/enrollments/my-details: the application fields saved on the caller's profile, to
+ * pre-fill the next application. The first application saves them; null = not given yet.
+ * The payment receipt is never included: each application needs its own.
+ */
+export type MyApplicationDetails = {
+  [K in keyof EnrollmentApplicationFields]: EnrollmentApplicationFields[K] | null;
 };
 
 /** GET /v1/enrollments/my-enrollments -> MyEnrollment[] (newest first). */

@@ -305,6 +305,21 @@ describe.skipIf(!dbName.endsWith('_test'))('Programs and enrollments (e2e, api.c
     expect(legacy.body).toEqual([]);
   });
 
+  it('my-details returns the saved application fields to pre-fill the next form', async () => {
+    const saved = await http().get('/v1/enrollments/my-details').set(as('student')).expect(200);
+    expect(saved.body).toEqual({ ...APPLICATION, age: Number(APPLICATION.age) });
+    const none = await http().get('/v1/enrollments/my-details').set(as('third')).expect(200);
+    expect(none.body).toEqual({
+      fullNameEn: null,
+      fullNameAr: null,
+      age: null,
+      phoneWhatsApp: null,
+      nationalId: null,
+      governorate: null,
+    });
+    await http().get('/v1/enrollments/my-details').expect(401);
+  });
+
   it('program detail never leaks other enrollments and locks content until accepted', async () => {
     // Publish the assignment so it shows in the curriculum.
     await http().patch(`/v1/admin/assignments/${ids.assignment}/status`).set(as('admin')).send({ status: 'PUBLISHED' }).expect(200);

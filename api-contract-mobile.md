@@ -200,6 +200,10 @@ Response `201` (`MyEnrollment`): `MyEnrollmentRef` (above) plus `program: { id, 
 
 Response `MyEnrollment[]`, newest first: the learner's own applications only.
 
+### 4.3 `GET /v1/enrollments/my-details`: saved application details
+
+Response `MyApplicationDetails`: `{ fullNameAr, fullNameEn, age, phoneWhatsApp, nationalId, governorate }` from the learner's profile, `null` for each field not given yet. The first application saves them. Use it to pre-fill the apply form; the payment receipt is never returned, so the learner picks it for each application.
+
 ---
 
 ## 5. Assignments
