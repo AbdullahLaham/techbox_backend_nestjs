@@ -20,6 +20,8 @@ import { HomeModule } from './home/home.module.js';
 import { ActivityModule } from './activity/activity.service.js';
 import { MeModule } from './me/me.module.js';
 import { CertificatesModule } from './certificates/certificates.module.js';
+import { AdminOverviewModule } from './overview/admin-overview.module.js';
+import { HealthController } from './health.controller.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule()
 
@@ -45,8 +47,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     HomeModule,
     MeModule,
     CertificatesModule,
+    AdminOverviewModule,
   ],
-  controllers: [AppController], // <--- اترك فقط الـ AppController هنا
+  controllers: [AppController, HealthController], // <--- اترك فقط الـ AppController هنا
   providers: [AppService],
 })
 export class AppModule {}

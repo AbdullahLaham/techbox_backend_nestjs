@@ -15,6 +15,8 @@ Exact TypeScript types are in the backend under `src/types/`, copied unchanged i
 | `assignments.contract.ts` | Learner assignment list |
 | `submissions.contract.ts` | Hand-ins, reviewing and grading |
 | `nodes.contract.ts` | Lessons (video, reading, quiz) and quizzes |
+| `admin-overview.contract.ts` | Staff home page counts (no imports) |
+| `home.contract.ts` | Learner home page, shared with the mobile app (no imports) |
 
 ## 1. Conventions
 
@@ -319,6 +321,7 @@ The web learner pages use the same endpoints and shapes as the mobile app (`api-
 
 | Page | Calls |
 |------|-------|
+| `/dashboard` (learner home) | `GET /v1/home?tz=` (`home.contract.ts`, same feed as the mobile Home tab: stats, this week's active days, assignments to do) and `GET /v1/enrollments/my-enrollments` |
 | `/programs` | `GET /v1/programs` |
 | `/programs/[slug]` | `GET /v1/programs/:slug` (send the token: adds `myEnrollment`, unlocks lessons) |
 | Apply dialog | `POST /v1/enrollments/:programId` (multipart: `fullNameAr`, `fullNameEn`, `age`, `phoneWhatsApp`, `nationalId`, `governorate`, optional `receipt` ≤ 10 MB) |
@@ -346,6 +349,22 @@ await api.post(SUBMISSIONS_ENDPOINTS.submit(assignmentId), form, {
 ```
 
 For link or text only, a JSON body `{ text, links }` works too. `GET .../my-submission` returns `canSubmit` and `submitBlockReason`.
+
+---
+
+## 9a. Staff home page (`GET /v1/admin/overview`)
+
+Roles: `SUPER_ADMIN`, `INCUBATOR_MANAGER`, `INSTRUCTOR`, `MENTOR`. Read-only, counted at request time. Types: `admin-overview.contract.ts` (`AdminOverviewResponse`).
+
+| Field | Meaning |
+|-------|---------|
+| `learners.total` / `learners.newRecently` | Student accounts that are not deleted / of those, created in the last 30 days |
+| `pendingApplications` | Enrollment applications waiting for a decision |
+| `submissionsAwaitingReview` | Hand-ins with status `SUBMITTED` or `UNDER_REVIEW` |
+| `enrollments` | `active`, `completed`, and `averageProgressPct` (mean progress of ACTIVE enrollments, one decimal) |
+| `programs[]` | Up to 8 catalog programs (`PUBLISHED`, `ONGOING`), soonest start first: seats, `pending` / `active` / `completed` counts and the mean progress of their ACTIVE learners |
+
+There is no startup or mentor data in the database yet, so the page shows none.
 
 ---
 
