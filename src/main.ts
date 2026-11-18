@@ -9,6 +9,9 @@ async function bootstrap() {
 
   configureApp(app);
 
+  // On SIGTERM (every deploy or restart) finish open requests and close database connections.
+  app.enableShutdownHooks();
+
   // PORT from the environment (checked at startup); 5000 is what the apps use in development.
   await app.listen(Number(process.env.PORT) || 5000);
   console.log(`Application is running on: ${await app.getUrl()}`);
