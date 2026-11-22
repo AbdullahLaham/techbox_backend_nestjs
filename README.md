@@ -49,7 +49,8 @@ There is no public way to register as staff. `npm run seed` creates the system o
 | Command | What it does |
 |---------|--------------|
 | `npm run start:dev` | Development server with reload |
-| `npm run build` / `npm run start:prod` | Production build / run `dist/main` |
+| `npm run build` / `npm run start:prod` | Production build (includes `prisma generate`) / run `dist/main` |
+| `npm run start:deploy` | Server start command: `prisma migrate deploy`, then `dist/main` |
 | `npm run lint` | oxlint |
 | `npm test` | Unit tests (Vitest) |
 | `npm run test:e2e` | End-to-end tests against a real database (see below) |
@@ -119,3 +120,6 @@ All `/v1` routes return errors as `{ statusCode, code, message, details? }`; cod
 - `NODE_ENV=production`, fresh random secrets, `CORS_ORIGINS`, `PUBLIC_API_URL`, `STORAGE_SIGNING_SECRET`, `TRUST_PROXY`.
 - `npx prisma migrate deploy` on every release, `npm run seed` once.
 - Persistent storage for `STORAGE_LOCAL_DIR`, or switch `StorageService` to Bunny Storage / S3.
+- Health check: `GET /health`.
+
+Step-by-step deployment on Railway (variables, volume, first accounts, moving accounts): [`docs/deploy-railway.md`](docs/deploy-railway.md).
