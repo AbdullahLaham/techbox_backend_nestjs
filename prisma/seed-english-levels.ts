@@ -1,6 +1,11 @@
 /**
  * Creates the English levels program: 12 tracks (Level 1 to Level 12), each with themed modules,
- * and in each module one published 10-question quiz. Run with `npm run seed:english-levels`.
+ * and in each module one published 10-question quiz. Each level also gets two published
+ * assignments (a writing task answered in text and a project handed in as a file), and the
+ * program gets its cover image. Run with `npm run seed:english-levels`.
+ *
+ * The assignment illustrations are files, so they go through the API afterwards:
+ * scripts/upload-english-assignment-images.ts.
  *
  * Kept apart from prisma/seed.ts on purpose: this script never touches accounts or passwords.
  *
@@ -9,16 +14,28 @@
  * The content lives in prisma/seed-data/english-levels and is validated before the database is used.
  */
 import {
+  AssignmentStatus,
   NodeType,
   PrismaClient,
   ProgramStatus,
   ProgramType,
+  SubmissionType,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pkg from 'pg';
 import * as dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { PROGRAM_LIMITS, SLUG_PATTERN } from '../src/types/api.contract.js';
+import { ASSIGNMENT_FIELD_LIMITS } from '../src/types/assignments.admin.contract.js';
 import { NODE_LIMITS, QUIZ_LIMITS } from '../src/types/nodes.contract.js';
+import {
+  ASSIGNMENTS,
+  assignmentNodeTitle,
+  imageFileFor,
+  instructionsFor,
+  type SeedAssignment,
+} from './seed-data/english-levels/assignments.js';
 import { level01 } from './seed-data/english-levels/level-01.js';
 import { level02 } from './seed-data/english-levels/level-02.js';
 import { level03 } from './seed-data/english-levels/level-03.js';
@@ -43,8 +60,22 @@ const PROGRAM = {
   title: 'مستويات اللغه الانجليزيه',
   slug: 'english-levels',
   description:
-    'برنامج متكامل لتعلم اللغة الإنجليزية من الصفر حتى الإتقان، مقسم إلى 12 مستوى متدرجاً وفق الإطار الأوروبي المرجعي للغات (من A1 إلى C2). يضم كل مستوى ثلاث وحدات في القواعد والمفردات ومهارات اللغة، وتنتهي كل وحدة باختبار من 10 أسئلة مع شرح لكل إجابة.',
+    'برنامج متكامل لتعلم اللغة الإنجليزية من الصفر حتى الإتقان، مقسم إلى 12 مستوى متدرجاً وفق الإطار الأوروبي المرجعي للغات (من A1 إلى C2). يضم كل مستوى ثلاث وحدات في القواعد والمفردات ومهارات اللغة، وتنتهي كل وحدة باختبار من 10 أسئلة مع شرح لكل إجابة، ويتضمن واجباً كتابياً ومشروعاً تطبيقياً.',
+  // Served by the web app (techbox_dashboard/public/images/programs). Override for another host.
+  coverImage:
+    process.env.ENGLISH_LEVELS_COVER_URL ||
+    'https://techbox-dashboard.vercel.app/images/programs/english-levels.png',
 };
+
+const IMAGES_DIR = fileURLToPath(
+  new URL('./seed-data/english-levels/images/', import.meta.url),
+);
+const ASSIGNMENTS_PER_LEVEL = 2;
+const ASSIGNMENT_MAX_SCORE = 100;
+
+const assignmentsOf = (level: number, moduleIndex: number) =>
+  ASSIGNMENTS.filter((a) => a.level === level && a.moduleIndex === moduleIndex);
+
 
 const LEVELS: SeedLevel[] = [
   level01,
@@ -120,6 +151,38 @@ function findProblems(levels: SeedLevel[]): string[] {
       }
     }
   });
+
+  ASSIGNMENTS.forEach((a) => {
+    const where = `Level ${a.level} assignment "${a.title}"`;
+    const level = levels[a.level - 1];
+    if (!level) problems.push(`${where}: no such level`);
+    else if (!level.modules[a.moduleIndex])
+      problems.push(`${where}: no module ${a.moduleIndex}`);
+    const title = assignmentNodeTitle(a);
+    if (
+      title.length > NODE_LIMITS.titleMax ||
+      title.length > ASSIGNMENT_FIELD_LIMITS.titleMax
+    )
+      problems.push(`${where}: title too long`);
+    if (title.length < ASSIGNMENT_FIELD_LIMITS.titleMin)
+      problems.push(`${where}: title too short`);
+    if (instructionsFor(a).length > ASSIGNMENT_FIELD_LIMITS.instructionsMax)
+      problems.push(`${where}: instructions too long`);
+    const points = a.criteria.reduce((sum, [, p]) => sum + p, 0);
+    if (points !== ASSIGNMENT_MAX_SCORE)
+      problems.push(`${where}: criteria add up to ${points}`);
+    if (!existsSync(IMAGES_DIR + imageFileFor(a)))
+      problems.push(`${where}: image ${imageFileFor(a)} missing`);
+  });
+  for (let level = 1; level <= EXPECTED_TRACKS; level++) {
+    const own = ASSIGNMENTS.filter((a) => a.level === level);
+    if (own.length !== ASSIGNMENTS_PER_LEVEL)
+      problems.push(`Level ${level}: ${own.length} assignments`);
+    if (new Set(own.map((a) => a.type)).size !== ASSIGNMENTS_PER_LEVEL)
+      problems.push(
+        `Level ${level}: needs one TEXT_CONTENT and one FILE_UPLOAD assignment`,
+      );
+  }
   return problems;
 }
 
@@ -147,36 +210,73 @@ function shuffledOptions(question: SeedQuestion) {
   return options.map((option, orderIndex) => ({ ...option, orderIndex }));
 }
 
-function moduleData(module: SeedModule, orderIndex: number) {
+/** An ASSIGNMENT lesson with its published assignment, placed after the module's quiz. */
+function assignmentNode(a: SeedAssignment, orderIndex: number, now: Date) {
+  return {
+    title: assignmentNodeTitle(a),
+    description:
+      a.type === SubmissionType.TEXT_CONTENT
+        ? 'واجب كتابي: تكتب إجابتك داخل التطبيق.'
+        : 'مشروع تطبيقي: ترفع ملفاً (PDF أو Word أو صورة).',
+    type: NodeType.ASSIGNMENT,
+    orderIndex,
+    isMandatory: true,
+    assignment: {
+      create: {
+        instructions: instructionsFor(a),
+        allowedType: SubmissionType[a.type],
+        maxScore: ASSIGNMENT_MAX_SCORE,
+        status: AssignmentStatus.PUBLISHED,
+        publishedAt: now,
+      },
+    },
+  };
+}
+
+function moduleData(
+  module: SeedModule,
+  orderIndex: number,
+  level: number,
+  now: Date,
+) {
   return {
     title: `${module.title} — ${module.titleAr}`,
     description: module.description,
     orderIndex,
     nodes: {
+      create: [
+        quizNode(module),
+        ...assignmentsOf(level, orderIndex).map((a, i) =>
+          assignmentNode(a, i + 1, now),
+        ),
+      ],
+    },
+  };
+}
+
+function quizNode(module: SeedModule) {
+  return {
+    title: `اختبار: ${module.titleAr}`,
+    description: `اختبار قصير يقيس فهمك لموضوع ${module.titleAr}.`,
+    type: NodeType.QUIZ,
+    orderIndex: 0,
+    isMandatory: true,
+    quiz: {
       create: {
-        title: `اختبار: ${module.titleAr}`,
-        description: `اختبار قصير يقيس فهمك لموضوع ${module.titleAr}.`,
-        type: NodeType.QUIZ,
-        orderIndex: 0,
-        isMandatory: true,
-        quiz: {
-          create: {
-            title: `Quiz: ${module.title}`,
-            description: `يتكون الاختبار من ${QUESTIONS_PER_QUIZ} أسئلة اختيار من متعدد، لكل سؤال درجة واحدة. علامة النجاح ${PASSING_SCORE} من ${QUESTIONS_PER_QUIZ}، ولديك ${MAX_ATTEMPTS} محاولات. يظهر شرح الإجابات بعد التسليم.`,
-            passingScore: PASSING_SCORE,
-            maxAttempts: MAX_ATTEMPTS,
-            showCorrectAnswers: true,
-            isPublished: true,
-            questions: {
-              create: module.questions.map((question, questionIndex) => ({
-                text: question.text,
-                explanation: question.explanation,
-                points: 1,
-                orderIndex: questionIndex,
-                options: { create: shuffledOptions(question) },
-              })),
-            },
-          },
+        title: `Quiz: ${module.title}`,
+        description: `يتكون الاختبار من ${QUESTIONS_PER_QUIZ} أسئلة اختيار من متعدد، لكل سؤال درجة واحدة. علامة النجاح ${PASSING_SCORE} من ${QUESTIONS_PER_QUIZ}، ولديك ${MAX_ATTEMPTS} محاولات. يظهر شرح الإجابات بعد التسليم.`,
+        passingScore: PASSING_SCORE,
+        maxAttempts: MAX_ATTEMPTS,
+        showCorrectAnswers: true,
+        isPublished: true,
+        questions: {
+          create: module.questions.map((question, questionIndex) => ({
+            text: question.text,
+            explanation: question.explanation,
+            points: 1,
+            orderIndex: questionIndex,
+            options: { create: shuffledOptions(question) },
+          })),
         },
       },
     },
@@ -207,6 +307,7 @@ async function main() {
       return;
     }
 
+    const now = new Date();
     const program = await prisma.$transaction(
       async (tx) => {
         const created = await tx.program.create({
@@ -223,7 +324,11 @@ async function main() {
               title: level.title,
               description: level.description,
               orderIndex: trackIndex,
-              modules: { create: level.modules.map(moduleData) },
+              modules: {
+                create: level.modules.map((m, i) =>
+                  moduleData(m, i, trackIndex + 1, now),
+                ),
+              },
             },
           });
           console.log(`- ${level.title}: ${level.modules.length} modules`);
@@ -238,7 +343,7 @@ async function main() {
       0,
     );
     console.log(
-      `✅ "${program.title}" created (${program.id}): ${LEVELS.length} tracks, ${modules} modules, ${modules} quizzes, ${modules * QUESTIONS_PER_QUIZ} questions.`,
+      `✅ "${program.title}" created (${program.id}): ${LEVELS.length} tracks, ${modules} modules, ${modules} quizzes, ${modules * QUESTIONS_PER_QUIZ} questions, ${ASSIGNMENTS.length} assignments. Next: scripts/upload-english-assignment-images.ts`,
     );
   } finally {
     await prisma.$disconnect();
