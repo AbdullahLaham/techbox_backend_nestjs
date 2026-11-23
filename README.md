@@ -56,6 +56,7 @@ There is no public way to register as staff. `npm run seed` creates the system o
 | `npm run test:e2e` | End-to-end tests against a real database (see below) |
 | `npm run seed` | First admin accounts |
 | `npm run seed:english-levels` | English levels program: 12 tracks with modules and quizzes (does nothing if it already exists) |
+| `npm run seed:relief-program` | Employment programme on relief project management and operations: 3 tracks, 6 modules, 6 quizzes (does nothing if it already exists) |
 | `npx prisma migrate dev --name <change>` | New migration after editing `prisma/schema.prisma` |
 | `npx tsx scripts/migrate-legacy-receipts.ts` | One-off: move pre-storage receipts out of `uploads/` |
 
